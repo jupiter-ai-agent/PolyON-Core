@@ -158,6 +158,8 @@ func Load() (*Config, error) {
 		SharedDir:   envOr("SHARED_DIR", "/shared"),
 		PolyonDir:   envOr("POLYON_DIR", "/polyon"),
 		SecretsDir:  envOr("SECRETS_DIR", "/polyon/secrets"),
+		Realm:       envOr("SAMBA_REALM", ""),
+		Domain:      envOr("SAMBA_DOMAIN", ""),
 		SambaHost:   envOr("SAMBA_HOST", "samba-dc"),
 		DCContainer: envOr("DC_CONTAINER", "polyon-dc"),
 		DBUser:      envOr("DB_USER", "polyon"),
