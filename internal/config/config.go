@@ -158,8 +158,8 @@ func Load() (*Config, error) {
 		SharedDir:   envOr("SHARED_DIR", "/shared"),
 		PolyonDir:   envOr("POLYON_DIR", "/polyon"),
 		SecretsDir:  envOr("SECRETS_DIR", "/polyon/secrets"),
-		Realm:       envOr("SAMBA_REALM", ""),
-		Domain:      envOr("SAMBA_DOMAIN", ""),
+		Realm:       envFirst("POLYON_DOMAIN_UPPER", "SAMBA_REALM"),
+		Domain:      envFirst("POLYON_DOMAIN_NETBIOS", "SAMBA_DOMAIN"),
 		SambaHost:   envOr("SAMBA_HOST", "samba-dc"),
 		DCContainer: envOr("DC_CONTAINER", "polyon-dc"),
 		DBUser:      envOr("DB_USER", "polyon"),
@@ -167,11 +167,26 @@ func Load() (*Config, error) {
 		DBName:      envOr("DB_NAME", "polyon"),
 	}
 
-	c.LDAPURL = envOr("LDAP_URL", fmt.Sprintf("ldap://%s:389", c.SambaHost))
-	c.KeycloakURL = envOr("KEYCLOAK_URL", "http://polyon-auth:8080")
-	c.StalwartURL = envOr("STALWART_URL", "http://polyon-mail:8080")
-	c.ElasticURL = envOr("ELASTICSEARCH_URL", "http://polyon-search:9200")
-	c.RustFSEndpoint = envOr("RUSTFS_ENDPOINT", "http://polyon-rustfs:9000")
+	c.LDAPURL = envFirst("POLYON_LDAP_URL", "LDAP_URL")
+	if c.LDAPURL == "" {
+		c.LDAPURL = fmt.Sprintf("ldap://%s:389", c.SambaHost)
+	}
+	c.KeycloakURL = envFirst("POLYON_AUTH_URL", "KEYCLOAK_URL")
+	if c.KeycloakURL == "" {
+		c.KeycloakURL = "http://polyon-auth:8080"
+	}
+	c.StalwartURL = envFirst("POLYON_STALWART_URL", "STALWART_URL")
+	if c.StalwartURL == "" {
+		c.StalwartURL = "http://polyon-mail:8080"
+	}
+	c.ElasticURL = envFirst("POLYON_SEARCH_URL", "ELASTICSEARCH_URL")
+	if c.ElasticURL == "" {
+		c.ElasticURL = "http://polyon-search:9200"
+	}
+	c.RustFSEndpoint = envFirst("POLYON_RUSTFS_URL", "RUSTFS_ENDPOINT")
+	if c.RustFSEndpoint == "" {
+		c.RustFSEndpoint = "http://polyon-rustfs:9000"
+	}
 	c.CoreURL = envOr("CORE_URL", "http://polyon-core:8000")
 	c.PrometheusURL = envOr("PROMETHEUS_URL", "http://polyon-prometheus:9090")
 	c.GiteaURL = envOr("GITEA_URL", "http://polyon-gitea:3000")
@@ -189,14 +204,58 @@ func Load() (*Config, error) {
 	// Read .env file
 	envMap := readEnvFile(filepath.Join(c.PolyonDir, ".env"))
 
-	c.DBPassword = envMapOr(envMap, "DB_PASSWORD", "")
+	c.DBPassword = envFirst("POLYON_DB_PASSWORD", "DB_PASSWORD")
+	if c.DBPassword == "" {
+		if v, ok := envMap["POLYON_DB_PASSWORD"]; ok {
+			c.DBPassword = v
+		} else if v, ok := envMap["DB_PASSWORD"]; ok {
+			c.DBPassword = v
+		}
+	}
 	c.KCAdminUser = envMapOr(envMap, "KC_BOOTSTRAP_ADMIN_USERNAME", "keycloak")
-	c.KCAdminPassword = envMapOr(envMap, "KC_ADMIN_PASSWORD", "")
+	c.KCAdminPassword = envFirst("POLYON_KC_ADMIN_PASSWORD", "KC_ADMIN_PASSWORD")
+	if c.KCAdminPassword == "" {
+		if v, ok := envMap["POLYON_KC_ADMIN_PASSWORD"]; ok {
+			c.KCAdminPassword = v
+		} else if v, ok := envMap["KC_ADMIN_PASSWORD"]; ok {
+			c.KCAdminPassword = v
+		}
+	}
 	c.StalwartAdminUser = envMapOr(envMap, "STALWART_ADMIN_USER", "stalwart")
-	c.StalwartAdminPassword = envMapOr(envMap, "STALWART_ADMIN_PASSWORD", "")
-	c.ElasticPassword = envMapOr(envMap, "ELASTIC_PASSWORD", "")
-	c.RustFSAccessKey = envMapOr(envMap, "RUSTFS_ROOT_USER", "rustfs")
-	c.RustFSSecretKey = envMapOr(envMap, "RUSTFS_ROOT_PASSWORD", "")
+	c.StalwartAdminPassword = envFirst("POLYON_STALWART_ADMIN_PASSWORD", "STALWART_ADMIN_PASSWORD")
+	if c.StalwartAdminPassword == "" {
+		if v, ok := envMap["POLYON_STALWART_ADMIN_PASSWORD"]; ok {
+			c.StalwartAdminPassword = v
+		} else if v, ok := envMap["STALWART_ADMIN_PASSWORD"]; ok {
+			c.StalwartAdminPassword = v
+		}
+	}
+	c.ElasticPassword = envFirst("POLYON_SEARCH_PASSWORD", "ELASTIC_PASSWORD")
+	if c.ElasticPassword == "" {
+		if v, ok := envMap["POLYON_SEARCH_PASSWORD"]; ok {
+			c.ElasticPassword = v
+		} else if v, ok := envMap["ELASTIC_PASSWORD"]; ok {
+			c.ElasticPassword = v
+		}
+	}
+	c.RustFSAccessKey = envFirst("POLYON_RUSTFS_ACCESS_KEY", "RUSTFS_ROOT_USER")
+	if c.RustFSAccessKey == "" {
+		if v, ok := envMap["POLYON_RUSTFS_ACCESS_KEY"]; ok {
+			c.RustFSAccessKey = v
+		} else if v, ok := envMap["RUSTFS_ROOT_USER"]; ok {
+			c.RustFSAccessKey = v
+		} else {
+			c.RustFSAccessKey = "rustfs"
+		}
+	}
+	c.RustFSSecretKey = envFirst("POLYON_RUSTFS_SECRET_KEY", "RUSTFS_ROOT_PASSWORD")
+	if c.RustFSSecretKey == "" {
+		if v, ok := envMap["POLYON_RUSTFS_SECRET_KEY"]; ok {
+			c.RustFSSecretKey = v
+		} else if v, ok := envMap["RUSTFS_ROOT_PASSWORD"]; ok {
+			c.RustFSSecretKey = v
+		}
+	}
 	c.GrafanaUser = envMapOr(envMap, "GF_SECURITY_ADMIN_USER", "grafana")
 	c.GrafanaPassword = envMapOr(envMap, "GF_SECURITY_ADMIN_PASSWORD", "")
 
@@ -206,9 +265,8 @@ func Load() (*Config, error) {
 	c.NextcloudAdminPassword = envMapOr(envMap, "NEXTCLOUD_ADMIN_PASSWORD", "")
 
 	// Database URL
-	if url := os.Getenv("DATABASE_URL"); url != "" {
-		c.DatabaseURL = url
-	} else {
+	c.DatabaseURL = envFirst("POLYON_DATABASE_URL", "DATABASE_URL")
+	if c.DatabaseURL == "" {
 		c.DatabaseURL = fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable",
 			c.DBUser, c.DBPassword, c.DBHost, c.DBName)
 	}
@@ -216,7 +274,7 @@ func Load() (*Config, error) {
 	// Admin password from secrets file
 	c.DCAdminPassword = readFileStr(filepath.Join(c.SecretsDir, "admin_password.txt"))
 	if c.DCAdminPassword == "" {
-		c.DCAdminPassword = os.Getenv("ADMIN_PASSWORD")
+		c.DCAdminPassword = envFirst("POLYON_DC_ADMIN_PASSWORD", "ADMIN_PASSWORD")
 	}
 
 	// Read setup.json if exists
@@ -348,12 +406,48 @@ func (c *Config) Reload() {
 	c.loadSetupJSON()
 	c.loadSMTPJSON()
 	envMap := readEnvFile(c.EnvFilePath())
-	c.DBPassword = envMapOr(envMap, "DB_PASSWORD", c.DBPassword)
-	c.KCAdminPassword = envMapOr(envMap, "KC_ADMIN_PASSWORD", c.KCAdminPassword)
+	
+	if newVal := envFirst("POLYON_DB_PASSWORD", "DB_PASSWORD"); newVal != "" {
+		c.DBPassword = newVal
+	} else if v, ok := envMap["POLYON_DB_PASSWORD"]; ok {
+		c.DBPassword = v
+	} else if v, ok := envMap["DB_PASSWORD"]; ok {
+		c.DBPassword = v
+	}
+	
+	if newVal := envFirst("POLYON_KC_ADMIN_PASSWORD", "KC_ADMIN_PASSWORD"); newVal != "" {
+		c.KCAdminPassword = newVal
+	} else if v, ok := envMap["POLYON_KC_ADMIN_PASSWORD"]; ok {
+		c.KCAdminPassword = v
+	} else if v, ok := envMap["KC_ADMIN_PASSWORD"]; ok {
+		c.KCAdminPassword = v
+	}
+	
 	c.StalwartAdminUser = envMapOr(envMap, "STALWART_ADMIN_USER", c.StalwartAdminUser)
-	c.StalwartAdminPassword = envMapOr(envMap, "STALWART_ADMIN_PASSWORD", c.StalwartAdminPassword)
-	c.ElasticPassword = envMapOr(envMap, "ELASTIC_PASSWORD", c.ElasticPassword)
-	c.RustFSSecretKey = envMapOr(envMap, "RUSTFS_ROOT_PASSWORD", c.RustFSSecretKey)
+	
+	if newVal := envFirst("POLYON_STALWART_ADMIN_PASSWORD", "STALWART_ADMIN_PASSWORD"); newVal != "" {
+		c.StalwartAdminPassword = newVal
+	} else if v, ok := envMap["POLYON_STALWART_ADMIN_PASSWORD"]; ok {
+		c.StalwartAdminPassword = v
+	} else if v, ok := envMap["STALWART_ADMIN_PASSWORD"]; ok {
+		c.StalwartAdminPassword = v
+	}
+	
+	if newVal := envFirst("POLYON_SEARCH_PASSWORD", "ELASTIC_PASSWORD"); newVal != "" {
+		c.ElasticPassword = newVal
+	} else if v, ok := envMap["POLYON_SEARCH_PASSWORD"]; ok {
+		c.ElasticPassword = v
+	} else if v, ok := envMap["ELASTIC_PASSWORD"]; ok {
+		c.ElasticPassword = v
+	}
+	
+	if newVal := envFirst("POLYON_RUSTFS_SECRET_KEY", "RUSTFS_ROOT_PASSWORD"); newVal != "" {
+		c.RustFSSecretKey = newVal
+	} else if v, ok := envMap["POLYON_RUSTFS_SECRET_KEY"]; ok {
+		c.RustFSSecretKey = v
+	} else if v, ok := envMap["RUSTFS_ROOT_PASSWORD"]; ok {
+		c.RustFSSecretKey = v
+	}
 }
 
 func (c *Config) loadSetupJSON() {
@@ -452,6 +546,16 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// envFirst returns the first non-empty environment variable from the given keys.
+func envFirst(keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func envMapOr(m map[string]string, key, fallback string) string {
