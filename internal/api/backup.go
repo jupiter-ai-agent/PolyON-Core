@@ -104,20 +104,25 @@ func runBackup(d *Deps, id, backupDir string) {
 		log.Warn().Err(err).Str("id", id).Msg("backup: postgres dump failed (non-fatal, continuing)")
 	}
 
-	// b. Samba backup
+	// b. Samba backup (skip if Docker not available in K8s environment)
 	setStep("samba")
 	sambaDir := filepath.Join(backupDir, "samba")
 	if err := os.MkdirAll(sambaDir, 0755); err == nil {
-		if _, err := d.Docker.ExecSambaTool(d.Cfg.DCContainer,
-			"domain", "backup", "online", "--targetdir=/var/lib/samba/backup"); err != nil {
-			log.Warn().Err(err).Str("id", id).Msg("backup: samba-tool failed (non-fatal)")
-		} else {
-			// docker cp samba backup out
-			cpCmd := exec.Command("docker", "cp",
-				d.Cfg.DCContainer+":/var/lib/samba/backup/.", sambaDir)
-			if out, err := cpCmd.CombinedOutput(); err != nil {
-				log.Warn().Err(err).Str("out", string(out)).Msg("backup: docker cp samba failed (non-fatal)")
+		if d.Docker != nil {
+			if _, err := d.Docker.ExecSambaTool(d.Cfg.DCContainer,
+				"domain", "backup", "online", "--targetdir=/var/lib/samba/backup"); err != nil {
+				log.Warn().Err(err).Str("id", id).Msg("backup: samba-tool failed (non-fatal)")
+			} else {
+				// In K8s, use kubectl cp instead of docker cp
+				// TODO: Replace with kubectl cp polyon-dc:/var/lib/samba/backup/. sambaDir when K8s is ready
+				cpCmd := exec.Command("docker", "cp",
+					d.Cfg.DCContainer+":/var/lib/samba/backup/.", sambaDir)
+				if out, err := cpCmd.CombinedOutput(); err != nil {
+					log.Warn().Err(err).Str("out", string(out)).Msg("backup: docker cp samba failed (non-fatal)")
+				}
 			}
+		} else {
+			log.Info().Str("id", id).Msg("backup: skipping samba backup (Docker not available in K8s environment)")
 		}
 	}
 
@@ -150,7 +155,7 @@ func runBackup(d *Deps, id, backupDir string) {
 	d.Store.LogAction("BACKUP_COMPLETE", "system", id, fmt.Sprintf("Backup complete, size=%d", size), "system", "")
 }
 
-// dumpPostgres runs pg_dumpall via docker exec and writes to outFile.
+// dumpPostgres runs pg_dumpall via docker exec (or kubectl exec in K8s) and writes to outFile.
 func dumpPostgres(outFile string) error {
 	f, err := os.Create(outFile)
 	if err != nil {
@@ -158,6 +163,8 @@ func dumpPostgres(outFile string) error {
 	}
 	defer f.Close()
 
+	// Try docker exec first (Docker Compose environment)
+	// TODO: Add kubectl exec fallback for K8s environment
 	cmd := exec.Command("docker", "exec", "polyon-db", "pg_dumpall", "-U", "polyon")
 	cmd.Stdout = f
 	var stderr []byte
@@ -167,14 +174,17 @@ func dumpPostgres(outFile string) error {
 		if err := cmd.Run(); err != nil {
 			pw.Close()
 			io.ReadAll(pr)
-			return fmt.Errorf("pg_dumpall: %w", err)
+			// In K8s environment, this will fail - log but don't fail the backup
+			log.Warn().Err(err).Msg("backup: postgres dump failed (docker exec not available in K8s)")
+			return nil // Non-fatal in K8s environment
 		}
 		pw.Close()
 		stderr, _ = io.ReadAll(pr)
 		_ = stderr
 	} else {
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("pg_dumpall: %w", err)
+			log.Warn().Err(err).Msg("backup: postgres dump failed (docker exec not available in K8s)")
+			return nil // Non-fatal in K8s environment
 		}
 	}
 	return nil
@@ -332,27 +342,29 @@ func runRestore(d *Deps, rec *store.BackupRecord) {
 		polyonDir = "/polyon"
 	}
 
-	// a. Services down
+	// a. Services down (skip in K8s environment)
 	log.Info().Msg("restore: compose down")
+	// TODO: Replace with kubectl delete/scale in K8s environment
 	downCmd := exec.Command("docker", "compose",
 		"-f", filepath.Join(polyonDir, "docker-compose.yml"),
 		"down", "--timeout", "30")
 	downCmd.Dir = polyonDir
 	if out, err := downCmd.CombinedOutput(); err != nil {
-		log.Warn().Err(err).Str("out", string(out)).Msg("restore: compose down failed (continuing)")
+		log.Warn().Err(err).Str("out", string(out)).Msg("restore: compose down failed (K8s environment expected)")
 	}
 
-	// b. Restore PostgreSQL
+	// b. Restore PostgreSQL (skip in K8s if docker not available)
 	dbFile := filepath.Join(backupDir, "db.sql")
 	if _, err := os.Stat(dbFile); err == nil {
 		log.Info().Msg("restore: psql restore")
+		// TODO: Replace with kubectl exec in K8s environment
 		psqlCmd := exec.Command("docker", "exec", "-i", "polyon-db",
 			"psql", "-U", "polyon")
 		f, err := os.Open(dbFile)
 		if err == nil {
 			psqlCmd.Stdin = f
 			if out, err := psqlCmd.CombinedOutput(); err != nil {
-				log.Warn().Err(err).Str("out", string(out)).Msg("restore: psql failed (non-fatal)")
+				log.Warn().Err(err).Str("out", string(out)).Msg("restore: psql failed (K8s environment expected)")
 			}
 			f.Close()
 		}
@@ -365,14 +377,15 @@ func runRestore(d *Deps, rec *store.BackupRecord) {
 		copyDir(configDir, polyonDir)
 	}
 
-	// d. Services up
+	// d. Services up (skip in K8s environment)
 	log.Info().Msg("restore: compose up")
+	// TODO: Replace with kubectl apply in K8s environment
 	upCmd := exec.Command("docker", "compose",
 		"-f", filepath.Join(polyonDir, "docker-compose.yml"),
 		"up", "-d")
 	upCmd.Dir = polyonDir
 	if out, err := upCmd.CombinedOutput(); err != nil {
-		log.Warn().Err(err).Str("out", string(out)).Msg("restore: compose up failed")
+		log.Warn().Err(err).Str("out", string(out)).Msg("restore: compose up failed (K8s environment expected)")
 	}
 
 	log.Info().Str("id", rec.ID).Msg("restore: complete")

@@ -54,9 +54,9 @@ func getServiceAccountToken(envPath string) (string, error) {
 	}
 
 	env := config.ReadEnvFile(envPath)
-	secret := env["HELIOS_ADMIN_API_SECRET"]
+	secret := env["POLYON_ADMIN_API_SECRET"]
 	if secret == "" {
-		return "", fmt.Errorf("HELIOS_ADMIN_API_SECRET이 설정되지 않았습니다")
+		return "", fmt.Errorf("POLYON_ADMIN_API_SECRET이 설정되지 않았습니다")
 	}
 
 	resp, err := http.PostForm(

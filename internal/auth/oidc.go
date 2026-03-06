@@ -163,7 +163,7 @@ func refreshJWKSForRealm(cfg *config.Config, realm, kid string) (*rsa.PublicKey,
 	defer jwksMu.Unlock()
 
 	// Build JWKS URL for the requested realm
-	jwksURL := fmt.Sprintf("%s/auth/realms/%s/protocol/openid-connect/certs", cfg.KeycloakURL, realm)
+	jwksURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs", cfg.KeycloakURL, realm)
 
 	resp, err := tlsClient.Get(jwksURL)
 	if err != nil {
@@ -236,7 +236,7 @@ func refreshJWKSForRealm(cfg *config.Config, realm, kid string) (*rsa.PublicKey,
 // verifyTokenUserinfo is the fallback using the Keycloak userinfo endpoint.
 func verifyTokenUserinfo(cfg *config.Config, token string) (string, error) {
 	// Use internal Keycloak URL directly (avoids Traefik proxy loop)
-	url := fmt.Sprintf("%s/auth/realms/admin/protocol/openid-connect/userinfo", cfg.KeycloakURL)
+	url := fmt.Sprintf("%s/realms/admin/protocol/openid-connect/userinfo", cfg.KeycloakURL)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

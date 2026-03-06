@@ -21,6 +21,8 @@ func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip auth for health checks and internal endpoints
 			if r.URL.Path == "/health" ||
+				r.URL.Path == "/api/v1/status" ||
+				r.URL.Path == "/api/sentinel/state" ||
 				strings.HasPrefix(r.URL.Path, "/api/internal/") {
 				next.ServeHTTP(w, r)
 				return
@@ -42,8 +44,15 @@ func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
 			// Extract Bearer token
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-				log.Debug().Str("path", r.URL.Path).Msg("No Authorization header — anonymous")
-				ctx := context.WithValue(r.Context(), ActorKey, "anonymous")
+				// Provisioned → reject anonymous
+				if cfg.IsProvisioned() {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(401)
+					w.Write([]byte(`{"status":"error","code":"AUTH_REQUIRED","error":"인증이 필요합니다"}`))
+					return
+				}
+				// Not provisioned → allow through as setup
+				ctx := context.WithValue(r.Context(), ActorKey, "setup")
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}

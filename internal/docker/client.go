@@ -1,4 +1,4 @@
-// Package docker provides Docker SDK operations for HELIOS.
+// Package docker provides Docker SDK operations for PolyON.
 package docker
 
 import (
@@ -23,11 +23,14 @@ type Client struct {
 	cli *client.Client
 }
 
-// New creates a new Docker client.
+// New creates a new Docker client. Returns nil instead of error if Docker is not available (K8s environment).
 func New() (*Client, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return nil, err
+		// In K8s environment, Docker socket may not be available
+		// Return nil client instead of failing - let callers handle gracefully
+		log.Warn().Err(err).Msg("Docker client init failed (expected in K8s environment)")
+		return nil, nil // Return nil client, not error
 	}
 	return &Client{cli: cli}, nil
 }

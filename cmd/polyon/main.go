@@ -22,7 +22,7 @@ func main() {
 	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"}).
 		With().Timestamp().Caller().Logger()
 
-	log.Info().Msg("HELIOS Core (Go) starting...")
+	log.Info().Msg("PolyON Core (Go) starting...")
 
 	// Load configuration
 	cfg, err := config.Load()

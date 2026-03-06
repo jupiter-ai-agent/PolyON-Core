@@ -158,7 +158,7 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request, cfg *config.Config)
 	// All apps use the same "portal" client — avoids client_id mismatch between
 	// the authorization request and the token exchange.
 	loginURL := fmt.Sprintf(
-		"%s/auth/realms/polyon/protocol/openid-connect/auth?client_id=%s&response_type=code&scope=openid&redirect_uri=%s&state=%s",
+		"%s/realms/polyon/protocol/openid-connect/auth?client_id=%s&response_type=code&scope=openid&redirect_uri=%s&state=%s",
 		cfg.KeycloakURL,
 		url.QueryEscape(forwardAuthClientID),
 		url.QueryEscape(cbURL),
@@ -170,7 +170,7 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request, cfg *config.Config)
 
 // exchangeCode exchanges an authorization code for tokens via Keycloak token endpoint.
 func exchangeCode(cfg *config.Config, code, redirectURI string) (*oidcTokenResponse, error) {
-	tokenURL := fmt.Sprintf("%s/auth/realms/polyon/protocol/openid-connect/token", cfg.KeycloakURL)
+	tokenURL := fmt.Sprintf("%s/realms/polyon/protocol/openid-connect/token", cfg.KeycloakURL)
 
 	form := url.Values{
 		"grant_type":   {"authorization_code"},

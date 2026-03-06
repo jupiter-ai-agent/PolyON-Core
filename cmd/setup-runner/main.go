@@ -243,7 +243,7 @@ func step2_recreateBasecamp(hostDir string) {
 
 // step3_waitCore waits for polyon-core to be healthy (max 90s).
 func step3_waitCore() {
-	writeProgress(progress{Phase: "basecamp", Step: "HELIOS Core 준비 대기 중...", Progress: 8})
+	writeProgress(progress{Phase: "basecamp", Step: "PolyON Core 준비 대기 중...", Progress: 8})
 	log.Info().Msg("Step 3: Waiting for polyon-core to be healthy")
 
 	deadline := time.Now().Add(90 * time.Second)
@@ -265,7 +265,7 @@ func step3_waitCore() {
 
 // step4_provisionKeycloak provisions Keycloak SSO.
 func step4_provisionKeycloak(setupJSON map[string]interface{}, env map[string]string) {
-	writeProgress(progress{Phase: "keycloak-provision", Step: "HELIOS Auth 프로비저닝 중...", Progress: 10})
+	writeProgress(progress{Phase: "keycloak-provision", Step: "PolyON Auth 프로비저닝 중...", Progress: 10})
 	log.Info().Msg("Step 4: Provisioning Keycloak")
 
 	kcUser := env["KC_BOOTSTRAP_ADMIN_USERNAME"]
@@ -320,7 +320,7 @@ func step4_provisionKeycloak(setupJSON map[string]interface{}, env map[string]st
 
 	// Create realm 'polyon'
 	// frontendUrl: tells Keycloak what URL to use in token issuers (must match browser-facing URL)
-	externalURL := os.Getenv("HELIOS_EXTERNAL_URL")
+	externalURL := os.Getenv("POLYON_EXTERNAL_URL")
 	if externalURL == "" {
 		externalURL = "https://192.168.55.200:1111"
 	}
@@ -356,7 +356,7 @@ func step4_provisionKeycloak(setupJSON map[string]interface{}, env map[string]st
 
 	// Create admin role
 	resp, _ = kc.do("POST", "/admin/realms/polyon/roles", map[string]interface{}{
-		"name": "admin", "description": "HELIOS Administrator",
+		"name": "admin", "description": "PolyON Administrator",
 	})
 	drainClose(resp)
 

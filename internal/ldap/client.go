@@ -1,4 +1,4 @@
-// Package ldap provides AD LDAP operations for HELIOS.
+// Package ldap provides AD LDAP operations for PolyON.
 package ldap
 
 import (

@@ -91,10 +91,17 @@ func systemResources(d *Deps) http.HandlerFunc {
 			}
 		}
 
-		// Containers
+		// Containers (K8s mode: 0 when Docker not available)
 		if d.Docker != nil {
-			containers, _ := d.Docker.ContainerList(context.Background())
-			result["container_count"] = len(containers)
+			containers, err := d.Docker.ContainerList(context.Background())
+			if err == nil {
+				result["container_count"] = len(containers)
+			} else {
+				result["container_count"] = 0
+			}
+		} else {
+			// K8s environment: no Docker client available
+			result["container_count"] = 0
 		}
 
 		// Elasticsearch stats
@@ -183,6 +190,11 @@ func auditLog(d *Deps) http.HandlerFunc {
 
 func createBackup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		if d.Docker == nil {
+			httputil.RespondError(w, 500, "BACKUP_UNAVAILABLE", "Docker client not available in K8s environment")
+			return
+		}
+
 		result, err := d.Docker.ExecSambaTool(d.Cfg.DCContainer,
 			"domain", "backup", "online", "--targetdir=/var/lib/samba/backup")
 		if err != nil {
@@ -196,6 +208,11 @@ func createBackup(d *Deps) http.HandlerFunc {
 
 func listBackups(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		if d.Docker == nil {
+			httputil.RespondOK(w, map[string]interface{}{"success": false, "error": "Docker client not available in K8s environment", "backups": []string{}})
+			return
+		}
+
 		output, err := d.Docker.ExecSambaTool(d.Cfg.DCContainer, "ls", "-la", "/var/lib/samba/backup/")
 		if err != nil {
 			httputil.RespondOK(w, map[string]interface{}{"success": false, "error": err.Error(), "backups": []string{}})

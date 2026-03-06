@@ -70,10 +70,13 @@ type Server struct {
 
 // New creates a new Server with all dependencies wired.
 func New(cfg *config.Config) (*Server, error) {
-	// Docker client
+	// Docker client (gracefully handle K8s environment where Docker socket is not available)
 	dc, err := docker.New()
 	if err != nil {
 		log.Warn().Err(err).Msg("Docker client init failed (will retry on demand)")
+		dc = nil // Ensure nil client in case of error
+	} else if dc == nil {
+		log.Info().Msg("Docker client not available (K8s environment)")
 	}
 
 	// LDAP client
@@ -342,6 +345,9 @@ func (s *Server) buildRouter() {
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})
+		r.Route("/platform", func(r chi.Router) {
+			api.RegisterPlatform(r, deps)
+		})
 	})
 
 	// Setup/Reset lifecycle APIs
@@ -407,7 +413,7 @@ func (s *Server) Start() error {
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	log.Info().Str("addr", addr).Msg("HELIOS Core starting")
+	log.Info().Str("addr", addr).Msg("PolyON Core starting")
 
 	// Regenerate Traefik dynamic config from DB state on startup
 	if s.store != nil && s.traefik != nil {
