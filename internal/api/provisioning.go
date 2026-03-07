@@ -33,6 +33,24 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 		// PP Directory API에서 AD DC 접속 정보 획득
 		dirInfo := getDirectoryInfo(d)
 
+		// Mattermost API 준비 대기 (DB migration 등으로 Pod ready 후에도 API가 늦을 수 있음)
+		mmURL := mattermostURL(d)
+		apiReady := false
+		for i := 0; i < 30; i++ { // 최대 60초
+			resp, err := mmClient.Get(mmURL + "/api/v4/system/ping")
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 200 {
+					apiReady = true
+					break
+				}
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if !apiReady {
+			log.Warn().Str("module_id", moduleID).Msg("Mattermost API not ready after 60s, attempting provisioning anyway")
+		}
+
 		switch spec.LDAP.Engine {
 		case "mattermost":
 			if err := provisionMattermostLDAP(ctx, d, moduleID, spec, dirInfo); err != nil {
