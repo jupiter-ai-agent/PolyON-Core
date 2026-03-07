@@ -260,4 +260,7 @@ func (s *Store) migrate() {
 
 	// System Manifest — single source of truth for all PolyON components
 	s.migrateComponents()
+
+	// Module System — PP module registry and lifecycle management
+	s.migrateModules()
 }
