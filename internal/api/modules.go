@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -341,14 +342,18 @@ func installModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// Wait for deployment to be ready (with timeout)
+		// Wait for deployment to be ready, then run post-install provisioning
 		go func() {
-			ctx := r.Context()
-			if err := d.Kube.WaitForDeploymentReady(ctx, id, 5*time.Minute); err != nil {
+			// background context — HTTP 요청 종료 후에도 계속 실행
+			bgCtx := context.Background()
+			if err := d.Kube.WaitForDeploymentReady(bgCtx, id, 5*time.Minute); err != nil {
 				log.Error().Err(err).Str("module_id", id).Msg("Deployment readiness check failed")
-				d.Store.CreateModuleEvent(ctx, id, "install", "warning", 
+				d.Store.CreateModuleEvent(bgCtx, id, "install", "warning",
 					"Deployment may not be ready", map[string]any{"error": err.Error()})
+				return
 			}
+			// Post-install: LDAP 바인딩, OIDC 등 자동 프로비저닝
+			PostInstallProvisioning(bgCtx, d, id, &manifest)
 		}()
 
 		// 9. 이벤트 기록

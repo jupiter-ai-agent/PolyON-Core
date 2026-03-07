@@ -55,9 +55,17 @@ type Spec struct {
 	Resources ResourcesSpec    `yaml:"resources" json:"resources"`
 	Ingress   IngressSpec      `yaml:"ingress,omitempty" json:"ingress,omitempty"`
 	Database  DatabaseSpec     `yaml:"database,omitempty" json:"database,omitempty"`
+	LDAP      LDAPBindSpec     `yaml:"ldap,omitempty" json:"ldap,omitempty"`
 	OIDC      OIDCSpec         `yaml:"oidc,omitempty" json:"oidc,omitempty"`
 	Admin     AdminSpec        `yaml:"admin" json:"admin"`
 	Uninstall UninstallSpec    `yaml:"uninstall,omitempty" json:"uninstall,omitempty"`
+}
+
+// LDAPBindSpec defines automatic AD/LDAP binding on install.
+type LDAPBindSpec struct {
+	Bind     bool              `yaml:"bind" json:"bind"`
+	Engine   string            `yaml:"engine" json:"engine"`
+	Settings map[string]string `yaml:"settings,omitempty" json:"settings,omitempty"`
 }
 
 // Dependency represents a module dependency.
