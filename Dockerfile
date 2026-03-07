@@ -10,7 +10,8 @@ RUN go mod download
 COPY . .
 
 # Build main API server
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /polyon-core ./cmd/polyon/
+ARG CORE_VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/triangles/polyon-core/internal/api.CoreVersion=${CORE_VERSION}" -o /polyon-core ./cmd/polyon/
 
 # setup-runner is no longer built — lifecycle is handled by Sentinel (lifecycle-api.sh)
 

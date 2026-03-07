@@ -15,10 +15,19 @@ import (
 	"github.com/triangles/polyon-core/internal/httputil"
 )
 
+// CoreVersion is set at build time via -ldflags.
+var CoreVersion = "dev"
+
 func RegisterSystem(r chi.Router, d *Deps) {
 	r.Route("/system", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 			httputil.RespondOK(w, map[string]string{"status": "ok", "timestamp": time.Now().UTC().Format(time.RFC3339)})
+		})
+		r.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
+			httputil.RespondOK(w, map[string]string{
+				"core_version":    CoreVersion,
+				"console_version": os.Getenv("CONSOLE_VERSION"),
+			})
 		})
 		r.Get("/resources", systemResources(d))
 		r.Get("/audit", auditLog(d))
