@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -659,4 +660,43 @@ func (c *Client) createModuleIngress(ctx context.Context, moduleID string, ingre
 // stringPtr returns a pointer to a string value.
 func stringPtr(s string) *string {
 	return &s
+}
+// GetSecret returns a module secret's string data.
+func (c *Client) GetSecret(ctx context.Context, secretName string) (map[string]string, error) {
+	secret, err := c.cs.CoreV1().Secrets(c.namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(secret.Data))
+	for k, v := range secret.Data {
+		result[k] = string(v)
+	}
+	return result, nil
+}
+
+// PatchSecret updates or adds string keys to an existing secret.
+func (c *Client) PatchSecret(ctx context.Context, secretName string, data map[string]string) error {
+	secret, err := c.cs.CoreV1().Secrets(c.namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if secret.Data == nil {
+		secret.Data = make(map[string][]byte)
+	}
+	for k, v := range data {
+		secret.Data[k] = []byte(v)
+	}
+	_, err = c.cs.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	return err
+}
+
+// ExecInPod runs a command in a pod (best-effort, no output capture).
+func (c *Client) ExecInPod(ctx context.Context, podName string, cmd []string) error {
+	// Use kubectl exec via os/exec for simplicity
+	args := append([]string{"exec", "-n", c.namespace, podName, "--"}, cmd...)
+	out, err := exec.CommandContext(ctx, "kubectl", args...).CombinedOutput()
+	if err != nil {
+		log.Warn().Str("pod", podName).Str("output", string(out)).Err(err).Msg("ExecInPod failed")
+	}
+	return err
 }

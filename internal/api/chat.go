@@ -1,9 +1,14 @@
 package api
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -41,14 +46,113 @@ func mattermostToken(d *Deps) string {
 }
 
 // chatEnsureToken ensures that an admin token exists, creating one if needed.
+var (
+	cachedMMToken string
+	mmTokenMu     sync.Mutex
+)
+
+// chatEnsureToken ensures a valid Mattermost admin session token.
+// Creates admin user if needed, logs in, caches the token.
 func chatEnsureToken(d *Deps) string {
-	// TODO: Implement K8s Secret-based token management
-	// For now, this is a placeholder that will be enhanced in future iterations
-	// when the K8s client interface is properly exposed.
-	
-	// Currently relies on MATTERMOST_TOKEN environment variable
-	// which should be set during module installation
-	return ""
+	mmTokenMu.Lock()
+	defer mmTokenMu.Unlock()
+
+	// Return cached token if still valid
+	if cachedMMToken != "" {
+		if verifyMMToken(d, cachedMMToken) {
+			return cachedMMToken
+		}
+		cachedMMToken = ""
+	}
+
+	// 1. Try to read from K8s Secret
+	if d.Kube != nil {
+		secret, err := d.Kube.GetSecret(context.Background(), "polyon-module-mattermost")
+		if err == nil {
+			if t, ok := secret["ADMIN_TOKEN"]; ok && t != "" && verifyMMToken(d, t) {
+				cachedMMToken = t
+				return t
+			}
+		}
+	}
+
+	mmURL := mattermostURL(d)
+	adminPassword := "PolyON-Admin-2026!"
+	adminEmail := "admin@" + d.Cfg.Realm
+
+	// 2. Try login first (admin may already exist)
+	token, err := mmLogin(mmURL, "admin", adminPassword)
+	if err != nil {
+		// 3. Create admin user
+		log.Info().Msg("Creating Mattermost admin user")
+		if err := mmCreateAdmin(mmURL, adminEmail, adminPassword); err != nil {
+			log.Error().Err(err).Msg("Failed to create Mattermost admin")
+			return ""
+		}
+		// 3b. Grant system_admin via DB
+		if d.Kube != nil {
+			_ = d.Kube.ExecInPod(context.Background(), "polyon-db-0",
+				[]string{"psql", "-U", "mattermost", "-d", "mattermost", "-c",
+					"UPDATE users SET roles='system_admin system_user' WHERE username='admin';"})
+		}
+		// 3c. Login again
+		token, err = mmLogin(mmURL, "admin", adminPassword)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to login as Mattermost admin after creation")
+			return ""
+		}
+	}
+
+	// 4. Save token to K8s Secret
+	if d.Kube != nil {
+		_ = d.Kube.PatchSecret(context.Background(), "polyon-module-mattermost",
+			map[string]string{"ADMIN_TOKEN": token})
+	}
+
+	cachedMMToken = token
+	log.Info().Msg("Mattermost admin token acquired")
+	return token
+}
+
+func mmLogin(baseURL, loginID, password string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"login_id": loginID, "password": password})
+	resp, err := mmClient.Post(baseURL+"/api/v4/users/login", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("login failed (%d): %s", resp.StatusCode, string(b))
+	}
+	return resp.Header.Get("Token"), nil
+}
+
+func mmCreateAdmin(baseURL, email, password string) error {
+	body, _ := json.Marshal(map[string]string{
+		"email": email, "username": "admin", "password": password,
+	})
+	resp, err := mmClient.Post(baseURL+"/api/v4/users", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 201 && resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("create user failed (%d): %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+func verifyMMToken(d *Deps, token string) bool {
+	req, _ := http.NewRequest("GET", mattermostURL(d)+"/api/v4/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := mmClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200
 }
 
 // chatProxy forwards a request to Mattermost and writes the response back.
