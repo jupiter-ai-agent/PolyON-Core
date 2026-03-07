@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/triangles/polyon-core/internal/config"
 	"github.com/triangles/polyon-core/internal/docker"
+	"github.com/triangles/polyon-core/internal/kube"
 	"github.com/triangles/polyon-core/internal/store"
 )
 
@@ -23,7 +24,7 @@ var (
 )
 
 // Start begins the health checker goroutine. Only one instance runs.
-func Start(dc *docker.Client, st *store.Store) {
+func Start(dc *docker.Client, kc *kube.Client, st *store.Store) {
 	go func() {
 		log.Info().Msg("[HealthChecker] Started (interval: 60s)")
 		// Wait for services to boot
@@ -36,7 +37,7 @@ func Start(dc *docker.Client, st *store.Store) {
 			select {
 			case <-ticker.C:
 				checkPrometheusAlerts(st)
-				checkContainerHealth(dc, st)
+				checkContainerHealth(dc, kc, st)
 			case <-stopCh:
 				log.Info().Msg("[HealthChecker] Stopped")
 				return
@@ -124,35 +125,69 @@ func checkPrometheusAlerts(st *store.Store) {
 	})
 }
 
-func checkContainerHealth(dc *docker.Client, st *store.Store) {
-	if dc == nil || st == nil {
-		return
-	}
-	containers, err := dc.ContainerList(context.Background())
-	if err != nil {
+func checkContainerHealth(dc *docker.Client, kc *kube.Client, st *store.Store) {
+	if st == nil {
 		return
 	}
 
-	for _, c := range containers {
-		key := "container_down:" + c.Name
-		if c.State != "running" {
-			if _, already := firedAlerts.Load(key); !already {
-				st.CreateAlert("CRITICAL", "docker",
-					"컨테이너 '"+c.Name+"' 중지됨 ("+c.Status+")",
-					"health_checker",
-					map[string]interface{}{"container": c.Name, "state": c.State}, nil)
-				firedAlerts.Store(key, true)
+	// K8s Pod status (primary)
+	if kc != nil {
+		pods, err := kc.ListPods(context.Background())
+		if err == nil {
+			for _, p := range pods {
+				key := "pod_down:" + p.Name
+				if p.Phase != "Running" {
+					if _, already := firedAlerts.Load(key); !already {
+						st.CreateAlert("CRITICAL", "kubernetes",
+							"Pod '"+p.Name+"' 중지됨 ("+p.Status+")",
+							"health_checker",
+							map[string]interface{}{"pod": p.Name, "phase": p.Phase}, nil)
+						firedAlerts.Store(key, true)
+					}
+				} else if p.Phase == "Running" && !p.Ready {
+					if _, already := firedAlerts.Load(key); !already {
+						st.CreateAlert("WARN", "kubernetes",
+							"Pod '"+p.Name+"' not ready",
+							"health_checker",
+							map[string]interface{}{"pod": p.Name, "ready": p.Ready}, nil)
+						firedAlerts.Store(key, true)
+					}
+				} else {
+					firedAlerts.Delete(key)
+				}
 			}
-		} else if strings.Contains(strings.ToLower(c.Status), "unhealthy") {
-			if _, already := firedAlerts.Load(key); !already {
-				st.CreateAlert("WARN", "docker",
-					"컨테이너 '"+c.Name+"' unhealthy",
-					"health_checker",
-					map[string]interface{}{"container": c.Name, "status": c.Status}, nil)
-				firedAlerts.Store(key, true)
+			return // K8s checks successful, skip Docker fallback
+		}
+	}
+
+	// Docker fallback
+	if dc != nil {
+		containers, err := dc.ContainerList(context.Background())
+		if err != nil {
+			return
+		}
+
+		for _, c := range containers {
+			key := "container_down:" + c.Name
+			if c.State != "running" {
+				if _, already := firedAlerts.Load(key); !already {
+					st.CreateAlert("CRITICAL", "docker",
+						"컨테이너 '"+c.Name+"' 중지됨 ("+c.Status+")",
+						"health_checker",
+						map[string]interface{}{"container": c.Name, "state": c.State}, nil)
+					firedAlerts.Store(key, true)
+				}
+			} else if strings.Contains(strings.ToLower(c.Status), "unhealthy") {
+				if _, already := firedAlerts.Load(key); !already {
+					st.CreateAlert("WARN", "docker",
+						"컨테이너 '"+c.Name+"' unhealthy",
+						"health_checker",
+						map[string]interface{}{"container": c.Name, "status": c.Status}, nil)
+					firedAlerts.Store(key, true)
+				}
+			} else {
+				firedAlerts.Delete(key)
 			}
-		} else {
-			firedAlerts.Delete(key)
 		}
 	}
 }

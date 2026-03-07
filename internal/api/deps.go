@@ -19,6 +19,7 @@ import (
 	"github.com/triangles/polyon-core/internal/engine/operaton"
 	strapiEngine "github.com/triangles/polyon-core/internal/engine/strapi"
 	"github.com/triangles/polyon-core/internal/gitea"
+	"github.com/triangles/polyon-core/internal/kube"
 	ldapPkg "github.com/triangles/polyon-core/internal/ldap"
 	"github.com/triangles/polyon-core/internal/samba"
 	"github.com/triangles/polyon-core/internal/servicesync"
@@ -30,6 +31,7 @@ import (
 type Deps struct {
 	Cfg     *config.Config
 	Docker  *docker.Client
+	Kube    *kube.Client
 	LDAP    *ldapPkg.Client
 	Samba   *samba.Service
 	Store   *store.Store

@@ -27,8 +27,41 @@ func getEnginesStatus(d *Deps) http.HandlerFunc {
 			}
 		}
 
-		// 2. Enrich with Docker container status for ALL components
-		if d.Docker != nil && d.Store != nil {
+		// 2. K8s Pod status (primary) or Docker fallback
+		if d.Kube != nil && d.Store != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			components, err := d.Store.ListComponents(ctx, "", "")
+			if err == nil {
+				podMap, perr := d.Kube.PodStatusMap(ctx)
+				if perr == nil {
+					for _, comp := range components {
+						if _, exists := result[comp.ID]; exists {
+							continue
+						}
+						cname := comp.ContainerName
+						if cname == "" {
+							continue
+						}
+						if ps, ok := podMap[cname]; ok {
+							hs := engine.HealthStatus{}
+							if ps.Ready && ps.Phase == "Running" {
+								hs.Status = "healthy"
+							} else if ps.Phase == "Running" && !ps.Ready {
+								hs.Status = "degraded"
+								hs.Message = "not ready"
+							} else {
+								hs.Status = "down"
+								hs.Message = "pod " + ps.Status
+							}
+							result[comp.ID] = hs
+						} else if comp.Status != "planned" {
+							result[comp.ID] = engine.HealthStatus{Status: "down", Message: "pod not found"}
+						}
+					}
+				}
+			}
+		} else if d.Docker != nil && d.Store != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 

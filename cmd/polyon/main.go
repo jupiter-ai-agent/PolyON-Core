@@ -12,6 +12,7 @@ import (
 
 	"github.com/triangles/polyon-core/internal/config"
 	"github.com/triangles/polyon-core/internal/docker"
+	"github.com/triangles/polyon-core/internal/kube"
 	"github.com/triangles/polyon-core/internal/monitor"
 	"github.com/triangles/polyon-core/internal/server"
 )
@@ -42,12 +43,13 @@ func main() {
 
 		st := srv.Store()
 
-		// Start health checker (Docker-based container monitoring)
+		// Start health checker (K8s-based pod monitoring with Docker fallback)
 		dc, dcErr := docker.New()
 		if dcErr != nil {
 			log.Warn().Err(dcErr).Msg("Docker client unavailable for health checker")
 		}
-		monitor.Start(dc, st)
+		kc, _ := kube.New()
+		monitor.Start(dc, kc, st)
 
 		// Start sentinel agent (LLM-based analysis)
 		monitor.StartSentinelAgent(cfg.SharedDir, st)

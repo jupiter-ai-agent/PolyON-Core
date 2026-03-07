@@ -31,11 +31,12 @@ import (
 	operatonEngine "github.com/triangles/polyon-core/internal/engine/operaton"
 	strapiEngine "github.com/triangles/polyon-core/internal/engine/strapi"
 	"github.com/triangles/polyon-core/internal/gitea"
-	"github.com/triangles/polyon-core/internal/servicesync"
 	"github.com/triangles/polyon-core/internal/httputil"
+	"github.com/triangles/polyon-core/internal/kube"
 	ldapPkg "github.com/triangles/polyon-core/internal/ldap"
 	"github.com/triangles/polyon-core/internal/proxy"
 	"github.com/triangles/polyon-core/internal/samba"
+	"github.com/triangles/polyon-core/internal/servicesync"
 	"github.com/triangles/polyon-core/internal/store"
 	"github.com/triangles/polyon-core/internal/traefik"
 )
@@ -46,6 +47,7 @@ type Server struct {
 	router  chi.Router
 	http    *http.Server
 	docker  *docker.Client
+	kube    *kube.Client
 	ldap    *ldapPkg.Client
 	samba   *samba.Service
 	store   *store.Store
@@ -78,6 +80,9 @@ func New(cfg *config.Config) (*Server, error) {
 	} else if dc == nil {
 		log.Info().Msg("Docker client not available (K8s environment)")
 	}
+
+	// Kubernetes client (for K8s health checks)
+	kc, _ := kube.New()
 
 	// LDAP client
 	lc := ldapPkg.New(cfg)
@@ -224,6 +229,7 @@ func New(cfg *config.Config) (*Server, error) {
 	s := &Server{
 		cfg:              cfg,
 		docker:           dc,
+		kube:             kc,
 		ldap:             lc,
 		samba:            sb,
 		store:            st,
@@ -284,6 +290,7 @@ func (s *Server) buildRouter() {
 	deps := &api.Deps{
 		Cfg:              s.cfg,
 		Docker:           s.docker,
+		Kube:             s.kube,
 		LDAP:             s.ldap,
 		Samba:            s.samba,
 		Store:            s.store,
