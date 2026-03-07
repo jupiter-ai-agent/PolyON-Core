@@ -80,22 +80,34 @@ func chatEnsureToken(d *Deps) string {
 	adminPassword := "PolyON-Admin-2026!"
 	adminEmail := "admin@" + d.Cfg.Realm
 
-	// 2. Try login first (admin may already exist)
+	// 2. Wait for Mattermost API to be ready (up to 90s)
+	log.Info().Str("url", mmURL).Msg("Waiting for Mattermost API...")
+	for i := 0; i < 45; i++ {
+		resp, pingErr := mmClient.Get(mmURL + "/api/v4/system/ping")
+		if pingErr == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				log.Info().Int("attempts", i+1).Msg("Mattermost API ready")
+				break
+			}
+		}
+		if i == 44 {
+			log.Error().Msg("Mattermost API not ready after 90s")
+			return ""
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	// 3. Try login first (admin may already exist)
 	token, err := mmLogin(mmURL, "admin", adminPassword)
 	if err != nil {
-		// 3. Create admin user
+		// 4. Create admin user
 		log.Info().Msg("Creating Mattermost admin user")
 		if err := mmCreateAdmin(mmURL, adminEmail, adminPassword); err != nil {
 			log.Error().Err(err).Msg("Failed to create Mattermost admin")
 			return ""
 		}
-		// 3b. Grant system_admin via DB
-		if d.Kube != nil {
-			_ = d.Kube.ExecInPod(context.Background(), "polyon-db-0",
-				[]string{"psql", "-U", "mattermost", "-d", "mattermost", "-c",
-					"UPDATE users SET roles='system_admin system_user' WHERE username='admin';"})
-		}
-		// 3c. Login again
+		// 4b. Login again (first user is auto system_admin in Mattermost)
 		token, err = mmLogin(mmURL, "admin", adminPassword)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to login as Mattermost admin after creation")
