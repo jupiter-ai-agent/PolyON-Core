@@ -2,13 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 	"github.com/triangles/polyon-core/internal/httputil"
+	"github.com/triangles/polyon-core/internal/module"
 	"github.com/triangles/polyon-core/internal/store"
 )
 
@@ -191,7 +194,7 @@ func getModule(d *Deps) http.HandlerFunc {
 	}
 }
 
-// installModule installs a module.
+// installModule installs a module with full K8s deployment pipeline.
 func installModule(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Store == nil {
@@ -199,29 +202,51 @@ func installModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
+		if d.Kube == nil {
+			httputil.RespondError(w, http.StatusServiceUnavailable, "KUBE_UNAVAILABLE", "Kubernetes 클라이언트를 사용할 수 없습니다")
+			return
+		}
+
 		id := chi.URLParam(r, "id")
 
-		// 모듈 존재 확인
-		module, err := d.Store.GetModule(r.Context(), id)
+		// 1. 모듈 존재 확인
+		moduleRecord, err := d.Store.GetModule(r.Context(), id)
 		if err != nil {
 			httputil.RespondError(w, http.StatusNotFound, "NOT_FOUND", "모듈을 찾을 수 없습니다: "+id)
 			return
 		}
 
-		if module.Status == "active" {
+		if moduleRecord.Status == "active" {
 			httputil.RespondError(w, http.StatusConflict, "ALREADY_INSTALLED", "이미 설치된 모듈입니다")
 			return
 		}
 
-		// 설치 시작 이벤트 기록
-		err = d.Store.CreateModuleEvent(r.Context(), id, "install", "started",
-			"Module installation started", nil)
-		if err != nil {
-			log.Error().Err(err).Msg("installModule: failed to create start event")
+		// 2. manifest에서 spec 파싱
+		var manifest module.Manifest
+		if err := json.Unmarshal(moduleRecord.Manifest, &manifest); err != nil {
+			log.Error().Err(err).Str("module_id", id).Msg("Failed to parse module manifest")
+			httputil.RespondError(w, http.StatusInternalServerError, "INVALID_MANIFEST", "모듈 매니페스트 파싱 실패")
+			return
 		}
 
-		// TODO: Phase 2에서 실제 K8s 배포 로직 구현
-		// 현재는 stub으로 status만 변경
+		// 3. 의존성 체크 (기본 체크만, Foundation은 항상 존재)
+		for _, dep := range manifest.Spec.Requires {
+			if dep.ID != "postgresql" && dep.ID != "keycloak" && dep.ID != "opensearch" {
+				// Check if required module is active
+				depModule, err := d.Store.GetModule(r.Context(), dep.ID)
+				if err != nil || depModule.Status != "active" {
+					httputil.RespondError(w, http.StatusPreconditionFailed, "DEPENDENCY_NOT_MET", 
+						fmt.Sprintf("필수 의존성 '%s'이 설치되지 않았습니다", dep.ID))
+					return
+				}
+			}
+		}
+
+		// 설치 시작 이벤트 기록
+		if err := d.Store.CreateModuleEvent(r.Context(), id, "install", "started",
+			"Module installation started", nil); err != nil {
+			log.Error().Err(err).Msg("installModule: failed to create start event")
+		}
 
 		// status를 installing으로 변경
 		if err := d.Store.UpdateModuleStatus(r.Context(), id, "installing"); err != nil {
@@ -230,56 +255,121 @@ func installModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// stub nav 정보 생성 (manifest에서 추출 예정)
-		var manifest map[string]any
-		json.Unmarshal(module.Manifest, &manifest)
-		
-		navInfo := store.ModuleNav{
-			ModuleID:    id,
-			Title:       module.Name,
-			Section:     "SERVICES",
-			Icon:        module.Icon,
-			DefaultPath: "/" + id,
-			SortOrder:   50,
-			NavItems:    json.RawMessage("[]"),
-			Routes:      json.RawMessage("[]"),
+		// 4. DB 프로비저닝 (spec.database.create == true일 때)
+		if manifest.Spec.Database.Create {
+			dbPassword, err := store.GeneratePassword(24)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to generate database password")
+				d.Store.UpdateModuleStatus(r.Context(), id, "error")
+				httputil.RespondError(w, http.StatusInternalServerError, "PASSWORD_GEN_ERROR", "데이터베이스 패스워드 생성 실패")
+				return
+			}
+
+			if err := d.Store.CreateModuleDatabase(r.Context(), manifest.Spec.Database.Name, 
+				manifest.Spec.Database.User, dbPassword); err != nil {
+				log.Error().Err(err).Str("module_id", id).Msg("Database provisioning failed")
+				d.Store.UpdateModuleStatus(r.Context(), id, "error")
+				d.Store.CreateModuleEvent(r.Context(), id, "install", "failed", "Database provisioning failed", nil)
+				httputil.RespondError(w, http.StatusInternalServerError, "DB_PROVISION_ERROR", "데이터베이스 프로비저닝 실패")
+				return
+			}
+
+			// Update secret with actual database password
+			dbURL := store.GetDatabaseConnection("polyon-db", "5432", 
+				manifest.Spec.Database.Name, manifest.Spec.Database.User, dbPassword)
+			
+			secretData := map[string][]byte{
+				"DATABASE_URL": []byte(dbURL),
+				"DB_PASSWORD":  []byte(dbPassword),
+			}
+			
+			// We'll update this after K8s secret creation
+			defer func() {
+				if err := d.Kube.UpdateSecretData(r.Context(), id, secretData); err != nil {
+					log.Error().Err(err).Str("module_id", id).Msg("Failed to update secret with DB password")
+				}
+			}()
 		}
 
-		// nav 정보 저장
+		// 5-6. K8s Secret + Deployment + Service + Ingress 생성
+		if err := d.Kube.DeployModule(r.Context(), id, manifest.Spec); err != nil {
+			log.Error().Err(err).Str("module_id", id).Msg("K8s deployment failed")
+			d.Store.UpdateModuleStatus(r.Context(), id, "error")
+			d.Store.CreateModuleEvent(r.Context(), id, "install", "failed", "K8s deployment failed", map[string]any{"error": err.Error()})
+			httputil.RespondError(w, http.StatusInternalServerError, "K8S_DEPLOY_ERROR", "K8s 배포 실패: "+err.Error())
+			return
+		}
+
+		// 7. nav 정보 등록 (manifest.spec.admin.nav에서 추출)
+		navItems, err := module.MarshalNavItems(manifest.Spec.Admin.Nav.Items)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to marshal nav items")
+			navItems = json.RawMessage("[]")
+		}
+
+		routes, err := module.MarshalRoutes(manifest.Spec.Admin.ConvertToRoutes())
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to marshal routes")
+			routes = json.RawMessage("[]")
+		}
+
+		navInfo := store.ModuleNav{
+			ModuleID:    id,
+			Title:       manifest.Spec.Admin.Nav.Title,
+			Section:     manifest.Spec.Admin.Nav.Section,
+			Icon:        manifest.Spec.Admin.Nav.Icon,
+			DefaultPath: manifest.Spec.Admin.Nav.DefaultPath,
+			SortOrder:   manifest.Spec.Admin.Nav.SortOrder,
+			NavItems:    navItems,
+			Routes:      routes,
+		}
+
 		if err := d.Store.SaveModuleNav(r.Context(), navInfo); err != nil {
 			log.Error().Err(err).Msg("installModule: failed to save nav info")
 		}
 
-		// status를 active로 변경
+		// 8. status → active
 		if err := d.Store.UpdateModuleStatus(r.Context(), id, "active"); err != nil {
 			log.Error().Err(err).Msg("installModule: failed to update status to active")
 			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "설치 완료 상태 업데이트 실패")
 			return
 		}
 
-		// 설치 완료 이벤트 기록
-		err = d.Store.CreateModuleEvent(r.Context(), id, "install", "completed",
-			"Module installation completed", map[string]any{
-				"version": module.Version,
-				"image":   module.Image,
-			})
-		if err != nil {
+		// Wait for deployment to be ready (with timeout)
+		go func() {
+			ctx := r.Context()
+			if err := d.Kube.WaitForDeploymentReady(ctx, id, 5*time.Minute); err != nil {
+				log.Error().Err(err).Str("module_id", id).Msg("Deployment readiness check failed")
+				d.Store.CreateModuleEvent(ctx, id, "install", "warning", 
+					"Deployment may not be ready", map[string]any{"error": err.Error()})
+			}
+		}()
+
+		// 9. 이벤트 기록
+		if err := d.Store.CreateModuleEvent(r.Context(), id, "install", "completed",
+			"Module installation completed successfully", map[string]any{
+				"version": moduleRecord.Version,
+				"image":   moduleRecord.Image,
+				"host":    fmt.Sprintf("%s.cmars.com", manifest.Spec.Ingress.Subdomain),
+			}); err != nil {
 			log.Error().Err(err).Msg("installModule: failed to create completion event")
 		}
 
-		log.Info().Str("module_id", id).Msg("Module installed successfully")
+		log.Info().Str("module_id", id).Str("version", moduleRecord.Version).Msg("Module installed successfully")
 
 		httputil.RespondOK(w, map[string]any{
 			"status": "installed",
 			"module": map[string]any{
-				"id":     id,
-				"status": "active",
+				"id":      id,
+				"status":  "active",
+				"version": moduleRecord.Version,
+				"url":     fmt.Sprintf("https://%s.cmars.com", manifest.Spec.Ingress.Subdomain),
 			},
 		})
 	}
 }
 
-// uninstallModule uninstalls a module.
+// uninstallModule uninstalls a module with full cleanup.
 func uninstallModule(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Store == nil {
@@ -287,27 +377,47 @@ func uninstallModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
+		if d.Kube == nil {
+			httputil.RespondError(w, http.StatusServiceUnavailable, "KUBE_UNAVAILABLE", "Kubernetes 클라이언트를 사용할 수 없습니다")
+			return
+		}
+
 		id := chi.URLParam(r, "id")
 
+		// Parse request body for data policy
+		var req struct {
+			DataPolicy string `json:"dataPolicy"` // "delete" | "keep"
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.DataPolicy == "" {
+			req.DataPolicy = "keep" // Default to keeping data
+		}
+
 		// 모듈 존재 확인
-		module, err := d.Store.GetModule(r.Context(), id)
+		moduleRecord, err := d.Store.GetModule(r.Context(), id)
 		if err != nil {
 			httputil.RespondError(w, http.StatusNotFound, "NOT_FOUND", "모듈을 찾을 수 없습니다: "+id)
 			return
 		}
 
-		if module.Status != "active" {
+		if moduleRecord.Status != "active" {
 			httputil.RespondError(w, http.StatusConflict, "NOT_INSTALLED", "설치되지 않은 모듈입니다")
 			return
 		}
 
-		// TODO: Phase 2에서 역의존성 체크 구현
-		// 현재는 기본 검사만
+		// Parse manifest for cleanup configuration
+		var manifest module.Manifest
+		if err := json.Unmarshal(moduleRecord.Manifest, &manifest); err != nil {
+			log.Error().Err(err).Str("module_id", id).Msg("Failed to parse module manifest for uninstall")
+			// Continue with basic cleanup
+		}
+
+		// TODO: 역의존성 체크 - 이 모듈에 의존하는 다른 모듈이 있는지 확인
+		// For Phase 2, we skip this check
 
 		// 제거 시작 이벤트 기록
-		err = d.Store.CreateModuleEvent(r.Context(), id, "uninstall", "started",
-			"Module uninstallation started", nil)
-		if err != nil {
+		if err := d.Store.CreateModuleEvent(r.Context(), id, "uninstall", "started",
+			"Module uninstallation started", map[string]any{"dataPolicy": req.DataPolicy}); err != nil {
 			log.Error().Err(err).Msg("uninstallModule: failed to create start event")
 		}
 
@@ -318,24 +428,45 @@ func uninstallModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// TODO: Phase 2에서 실제 K8s 리소스 삭제 구현
+		// 1. K8s 리소스 삭제 (Deployment, Service, Ingress, Secret)
+		if err := d.Kube.DeleteModule(r.Context(), id); err != nil {
+			log.Error().Err(err).Str("module_id", id).Msg("K8s resource deletion failed")
+			// Continue with database cleanup even if K8s deletion fails
+		}
 
-		// nav 정보 삭제 (CASCADE로 자동 삭제되지만 명시적 호출)
+		// 2. DB 삭제 (데이터 정책에 따라)
+		if req.DataPolicy == "delete" && manifest.Spec.Database.Create {
+			if err := d.Store.DeleteModuleDatabase(r.Context(), manifest.Spec.Database.Name, 
+				manifest.Spec.Database.User); err != nil {
+				log.Error().Err(err).Str("module_id", id).Msg("Database deletion failed")
+				// Continue with record cleanup
+			}
+		}
+
+		// 3. nav 정보 삭제 (CASCADE로 자동 삭제되지만 명시적 호출)
 		if err := d.Store.DeleteModuleNav(r.Context(), id); err != nil {
 			log.Error().Err(err).Msg("uninstallModule: failed to delete nav")
 		}
 
-		// 모듈 레코드 삭제
+		// 4. module 레코드 삭제
 		if err := d.Store.DeleteModule(r.Context(), id); err != nil {
-			log.Error().Err(err).Msg("uninstallModule: failed to delete module")
-			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "모듈 삭제 실패")
+			log.Error().Err(err).Msg("uninstallModule: failed to delete module record")
+			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "모듈 레코드 삭제 실패")
 			return
 		}
 
-		log.Info().Str("module_id", id).Msg("Module uninstalled successfully")
+		// 제거 완료 이벤트 기록 (별도 테이블이므로 module 삭제 후에도 기록 가능)
+		d.Store.CreateModuleEvent(r.Context(), id, "uninstall", "completed",
+			"Module uninstallation completed", map[string]any{
+				"dataPolicy": req.DataPolicy,
+				"version":    moduleRecord.Version,
+			})
+
+		log.Info().Str("module_id", id).Str("data_policy", req.DataPolicy).Msg("Module uninstalled successfully")
 
 		httputil.RespondOK(w, map[string]any{
-			"status": "uninstalled",
+			"status":     "uninstalled",
+			"dataPolicy": req.DataPolicy,
 		})
 	}
 }
