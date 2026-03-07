@@ -319,6 +319,7 @@ func (s *Server) buildRouter() {
 		api.RegisterOUs(r, deps)
 		api.RegisterDNS(r, deps)
 		api.RegisterDomain(r, deps)
+		api.RegisterDirectory(r, deps)
 		api.RegisterSecurity(r, deps)
 		api.RegisterPolicy(r, deps)
 		api.RegisterSystem(r, deps)

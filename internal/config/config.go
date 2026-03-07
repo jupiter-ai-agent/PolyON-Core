@@ -45,6 +45,7 @@ type Config struct {
 	// LDAP
 	SambaHost string `json:"samba_host"`
 	LDAPURL   string `json:"ldap_url"`
+	Namespace string `json:"namespace"` // K8s namespace
 
 	// Database
 	DatabaseURL string `json:"-"`
@@ -161,6 +162,7 @@ func Load() (*Config, error) {
 		Realm:       envFirst("POLYON_DOMAIN_UPPER", "SAMBA_REALM"),
 		Domain:      envFirst("POLYON_DOMAIN_NETBIOS", "SAMBA_DOMAIN"),
 		SambaHost:   envOr("SAMBA_HOST", "samba-dc"),
+		Namespace:   envOr("POD_NAMESPACE", "polyon"),
 		DCContainer: envOr("DC_CONTAINER", "polyon-dc"),
 		DBUser:      envOr("DB_USER", "polyon"),
 		DBHost:      envOr("DB_HOST", "polyon-db"),

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -31,9 +30,12 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 			return
 		}
 
+		// PP Directory API에서 AD DC 접속 정보 획득
+		dirInfo := getDirectoryInfo(d)
+
 		switch spec.LDAP.Engine {
 		case "mattermost":
-			if err := provisionMattermostLDAP(ctx, d, moduleID, spec); err != nil {
+			if err := provisionMattermostLDAP(ctx, d, moduleID, spec, dirInfo); err != nil {
 				log.Error().Err(err).Str("module_id", moduleID).Msg("Mattermost LDAP provisioning failed")
 				d.Store.CreateModuleEvent(ctx, moduleID, "provision", "warning",
 					"LDAP binding failed: "+err.Error(), nil)
@@ -48,8 +50,30 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 	}
 }
 
+// getDirectoryInfo builds DirectoryConnectInfo from Config.
+// Same source as GET /api/v1/directory/connect-info.
+func getDirectoryInfo(d *Deps) DirectoryConnectInfo {
+	cfg := d.Cfg
+	return DirectoryConnectInfo{
+		Host:    cfg.SambaHost,
+		FQDN:    cfg.SambaHost + "." + cfg.Namespace + ".svc.cluster.local",
+		Port:    389,
+		TLSPort: 636,
+		BaseDN:  cfg.BaseDN(),
+		AdminDN: cfg.AdminDN(),
+		UsersDN: "CN=Users," + cfg.BaseDN(),
+		Realm:   cfg.Realm,
+		Domain:  cfg.Domain,
+		LDAPURL: cfg.LDAPURL,
+		BindCredential: BindCredentialRef{
+			SecretName: "polyon-dc-admin",
+			SecretKey:  "password",
+		},
+	}
+}
+
 // provisionMattermostLDAP configures Mattermost LDAP settings using the AD DC.
-func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec module.Spec) error {
+func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec module.Spec, dir DirectoryConnectInfo) error {
 	mmURL := mattermostURL(d)
 	token := mattermostToken(d)
 	if token == "" {
@@ -62,23 +86,23 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 		return fmt.Errorf("get config: %w", err)
 	}
 
-	// 2. LDAP 설정 구성
+	// 2. LDAP 설정 — Directory API 정보 기반으로 동적 구성
 	ldapSettings := map[string]interface{}{
-		"Enable":                    true,
-		"EnableSync":                true,
-		"LdapServer":               os.Getenv("SAMBA_HOST"),
-		"LdapPort":                 389,
-		"ConnectionSecurity":       "",
-		"BaseDN":                   buildBaseDN(os.Getenv("POLYON_DOMAIN_UPPER")),
-		"BindUsername":             fmt.Sprintf("CN=Administrator,CN=Users,%s", buildBaseDN(os.Getenv("POLYON_DOMAIN_UPPER"))),
-		"BindPassword":             os.Getenv("ADMIN_PASSWORD"),
-		"SkipCertificateVerification": true,
-		"SyncIntervalMinutes":      60,
-		"QueryTimeout":             60,
-		"MaxPageSize":              1500,
+		"Enable":                       true,
+		"EnableSync":                   true,
+		"LdapServer":                   dir.FQDN,
+		"LdapPort":                     dir.Port,
+		"ConnectionSecurity":           "",
+		"BaseDN":                       dir.BaseDN,
+		"BindUsername":                  dir.AdminDN,
+		"BindPassword":                 d.Cfg.DCAdminPassword,
+		"SkipCertificateVerification":  true,
+		"SyncIntervalMinutes":          60,
+		"QueryTimeout":                 60,
+		"MaxPageSize":                  1500,
 	}
 
-	// manifest의 settings 오버레이
+	// manifest의 settings 오버레이 (UserFilter, attribute mappings 등)
 	for k, v := range spec.LDAP.Settings {
 		ldapSettings[k] = v
 	}
@@ -97,49 +121,15 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 
 	// 5. LDAP Sync 실행
 	if err := mmAPIPost(mmURL, token, "/api/v4/ldap/sync"); err != nil {
-		log.Warn().Err(err).Msg("LDAP sync trigger failed (may require license)")
+		log.Warn().Err(err).Msg("LDAP sync trigger failed")
 	}
 
 	log.Info().
-		Str("server", os.Getenv("SAMBA_HOST")).
-		Str("base_dn", buildBaseDN(os.Getenv("POLYON_DOMAIN_UPPER"))).
-		Msg("Mattermost LDAP configured")
+		Str("server", dir.FQDN).
+		Str("base_dn", dir.BaseDN).
+		Msg("Mattermost LDAP configured via Directory API")
 
 	return nil
-}
-
-// buildBaseDN converts "CMARS.COM" → "DC=CMARS,DC=COM"
-func buildBaseDN(domain string) string {
-	if domain == "" {
-		return ""
-	}
-	result := ""
-	for i, part := range splitDomain(domain) {
-		if i > 0 {
-			result += ","
-		}
-		result += "DC=" + part
-	}
-	return result
-}
-
-func splitDomain(domain string) []string {
-	var parts []string
-	current := ""
-	for _, c := range domain {
-		if c == '.' {
-			if current != "" {
-				parts = append(parts, current)
-			}
-			current = ""
-		} else {
-			current += string(c)
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
 }
 
 // ── Mattermost API helpers ──
