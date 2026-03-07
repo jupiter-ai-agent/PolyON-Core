@@ -97,10 +97,16 @@ func registerModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// Phase 2: 이미지에서 module.yaml 추출
+		// Phase 2: manifest 취득 — catalog 우선, 없으면 이미지에서 추출
 		var manifest *module.Manifest
 
-		if d.Kube != nil {
+		// 2-a: embedded catalog에서 먼저 찾기 (즉시 응답)
+		if m := module.FindCatalogManifest(req.Image); m != nil {
+			manifest = m
+			log.Info().Str("image", req.Image).Str("id", m.Metadata.ID).Msg("registerModule: using catalog manifest")
+		} else if d.Kube != nil {
+			// 2-b: 3rd-party — 이미지에서 module.yaml 추출 (느림)
+			log.Info().Str("image", req.Image).Msg("registerModule: extracting manifest from image")
 			raw, err := d.Kube.ExtractModuleManifest(r.Context(), req.Image)
 			if err != nil {
 				log.Error().Err(err).Str("image", req.Image).Msg("registerModule: manifest extraction failed")
@@ -117,7 +123,7 @@ func registerModule(d *Deps) http.HandlerFunc {
 			}
 			manifest = m
 		} else {
-			// Fallback: K8s 없으면 이미지 이름에서 stub 생성
+			// 2-c: Fallback stub
 			log.Warn().Msg("registerModule: K8s not available, using stub manifest")
 			manifest = &module.Manifest{
 				Metadata: module.Metadata{
@@ -129,7 +135,6 @@ func registerModule(d *Deps) http.HandlerFunc {
 					Accent:   "#0f62fe",
 				},
 			}
-			// stub — manifestJSON은 아래에서 json.Marshal(manifest)로 생성
 		}
 
 		moduleID := manifest.Metadata.ID
