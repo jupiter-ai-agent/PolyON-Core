@@ -36,18 +36,27 @@ func replaceDBInConnStr(connStr string, newDB string) string {
 func (s *Store) CreateModuleDatabase(ctx context.Context, dbName, dbUser, dbPassword string) error {
 	log.Info().Str("db_name", dbName).Str("db_user", dbUser).Msg("Creating module database")
 
-	// Create user first
+	// Create user (idempotent — skip if exists, update password)
 	createUserSQL := fmt.Sprintf(`CREATE USER "%s" WITH PASSWORD '%s'`, dbUser, dbPassword)
 	if _, err := s.pool.Exec(ctx, createUserSQL); err != nil {
-		return fmt.Errorf("failed to create user %s: %w", dbUser, err)
+		// Check if role already exists
+		if strings.Contains(err.Error(), "already exists") {
+			log.Info().Str("db_user", dbUser).Msg("User already exists, updating password")
+			alterPwSQL := fmt.Sprintf(`ALTER USER "%s" WITH PASSWORD '%s'`, dbUser, dbPassword)
+			s.pool.Exec(ctx, alterPwSQL)
+		} else {
+			return fmt.Errorf("failed to create user %s: %w", dbUser, err)
+		}
 	}
 
-	// Create database (without OWNER to avoid SET ROLE requirement)
+	// Create database (idempotent — skip if exists)
 	createDbSQL := fmt.Sprintf(`CREATE DATABASE "%s"`, dbName)
 	if _, err := s.pool.Exec(ctx, createDbSQL); err != nil {
-		dropUserSQL := fmt.Sprintf(`DROP USER "%s"`, dbUser)
-		s.pool.Exec(ctx, dropUserSQL)
-		return fmt.Errorf("failed to create database %s: %w", dbName, err)
+		if strings.Contains(err.Error(), "already exists") {
+			log.Info().Str("db_name", dbName).Msg("Database already exists, reusing")
+		} else {
+			return fmt.Errorf("failed to create database %s: %w", dbName, err)
+		}
 	}
 
 	// Transfer ownership + grant privileges
