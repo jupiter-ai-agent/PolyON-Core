@@ -19,16 +19,19 @@ func (s *Store) CreateModuleDatabase(ctx context.Context, dbName, dbUser, dbPass
 		return fmt.Errorf("failed to create user %s: %w", dbUser, err)
 	}
 
-	// Create database
-	createDbSQL := fmt.Sprintf(`CREATE DATABASE "%s" OWNER "%s"`, dbName, dbUser)
+	// Create database (without OWNER to avoid SET ROLE requirement)
+	createDbSQL := fmt.Sprintf(`CREATE DATABASE "%s"`, dbName)
 	if _, err := s.pool.Exec(ctx, createDbSQL); err != nil {
-		// Cleanup user if database creation fails
 		dropUserSQL := fmt.Sprintf(`DROP USER "%s"`, dbUser)
 		s.pool.Exec(ctx, dropUserSQL)
 		return fmt.Errorf("failed to create database %s: %w", dbName, err)
 	}
 
-	// Grant permissions
+	// Transfer ownership + grant privileges
+	alterSQL := fmt.Sprintf(`ALTER DATABASE "%s" OWNER TO "%s"`, dbName, dbUser)
+	if _, err := s.pool.Exec(ctx, alterSQL); err != nil {
+		log.Warn().Err(err).Msg("Failed to set database owner, granting privileges instead")
+	}
 	grantSQL := fmt.Sprintf(`GRANT ALL PRIVILEGES ON DATABASE "%s" TO "%s"`, dbName, dbUser)
 	if _, err := s.pool.Exec(ctx, grantSQL); err != nil {
 		log.Warn().Err(err).Str("db_name", dbName).Str("db_user", dbUser).Msg("Failed to grant privileges")
