@@ -221,11 +221,43 @@ func installModule(d *Deps) http.HandlerFunc {
 
 		id := chi.URLParam(r, "id")
 
-		// 1. 모듈 존재 확인
+		// 1. 모듈 존재 확인 — 없으면 catalog에서 자동 등록 시도
 		moduleRecord, err := d.Store.GetModule(r.Context(), id)
 		if err != nil {
-			httputil.RespondError(w, http.StatusNotFound, "NOT_FOUND", "모듈을 찾을 수 없습니다: "+id)
-			return
+			// catalog에서 자동 등록 시도
+			catalogManifest := module.FindCatalogManifestByID(id)
+			if catalogManifest == nil {
+				httputil.RespondError(w, http.StatusNotFound, "NOT_FOUND", "모듈을 찾을 수 없습니다: "+id)
+				return
+			}
+			log.Info().Str("module_id", id).Msg("Auto-registering catalog module for install")
+			manifestJSON, _ := json.Marshal(catalogManifest)
+			requiresJSON, _ := json.Marshal(catalogManifest.Spec.Requires)
+			optionalJSON, _ := json.Marshal(catalogManifest.Spec.Optional)
+			autoRec := store.Module{
+				ID:          catalogManifest.Metadata.ID,
+				Name:        catalogManifest.Metadata.Name,
+				Description: catalogManifest.Metadata.Description,
+				Category:    catalogManifest.Metadata.Category,
+				Version:     catalogManifest.Metadata.Version,
+				Engine:      catalogManifest.Spec.Engine,
+				Image:       catalogManifest.Spec.Resources.Image,
+				Icon:        catalogManifest.Metadata.Icon,
+				Accent:      catalogManifest.Metadata.Accent,
+				Status:      "available",
+				Manifest:    manifestJSON,
+				Requires:    requiresJSON,
+				OptionalDeps: optionalJSON,
+			}
+			if err := d.Store.CreateModule(r.Context(), autoRec); err != nil {
+				httputil.RespondError(w, http.StatusInternalServerError, "AUTO_REGISTER_FAILED", "자동 등록 실패: "+err.Error())
+				return
+			}
+			moduleRecord, _ = d.Store.GetModule(r.Context(), id)
+			if moduleRecord == nil {
+				httputil.RespondError(w, http.StatusInternalServerError, "AUTO_REGISTER_FAILED", "자동 등록 후 모듈 조회 실패")
+				return
+			}
 		}
 
 		if moduleRecord.Status == "active" {

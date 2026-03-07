@@ -37,6 +37,33 @@ func FindCatalogManifest(image string) *Manifest {
 	return m
 }
 
+// FindCatalogManifestByID searches catalog by module ID (e.g., "mattermost").
+func FindCatalogManifestByID(moduleID string) *Manifest {
+	// Try each catalog directory
+	entries, err := catalogFS.ReadDir("catalog")
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := "catalog/" + entry.Name() + "/module.yaml"
+		data, err := catalogFS.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		m, err := ParseManifest(data)
+		if err != nil {
+			continue
+		}
+		if m.Metadata.ID == moduleID {
+			return m
+		}
+	}
+	return nil
+}
+
 // extractModuleName extracts the module name from a Docker image reference.
 // "jupitertriangles/polyon-chat:v1.0.0" → "chat"
 // "jupitertriangles/polyon-wiki:latest" → "wiki"
