@@ -526,6 +526,8 @@ func (c *Client) buildPodTemplate(moduleID string, resources module.ResourcesSpe
 	container := corev1.Container{
 		Name:            moduleID,
 		Image:           resources.Image,
+		Command:         resources.Command,
+		Args:            resources.Args,
 		Ports:           containerPorts,
 		Env:             envVars,
 		VolumeMounts:    volumeMounts,

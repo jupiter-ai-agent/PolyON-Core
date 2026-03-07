@@ -72,6 +72,8 @@ type ResourcesSpec struct {
 	StatefulSet bool                    `yaml:"statefulset,omitempty" json:"statefulset,omitempty"`
 	Image       string                  `yaml:"image" json:"image"`
 	Replicas    int                     `yaml:"replicas,omitempty" json:"replicas,omitempty"`
+	Command     []string                `yaml:"command,omitempty" json:"command,omitempty"`
+	Args        []string                `yaml:"args,omitempty" json:"args,omitempty"`
 	Ports       []PortSpec              `yaml:"ports" json:"ports"`
 	Env         []EnvSpec               `yaml:"env,omitempty" json:"env,omitempty"`
 	Health      HealthSpec              `yaml:"health" json:"health"`
