@@ -138,7 +138,7 @@ var seedInfraServices = []InfraService{
 		Protocol: "http", Category: "engine", EntryPoint: "", Enabled: true,
 	},
 	{
-		ID: "mattermost", Name: "Mattermost", Host: "polyon-chat", Port: 8065,
+		ID: "mattermost", Name: "Mattermost", Host: "polyon-mattermost", Port: 8065,
 		Protocol: "http", Category: "engine", EntryPoint: "", Enabled: true,
 	},
 	// rustfs-api is the S3 API port (9000); existing "rustfs" (9001) is the Console UI

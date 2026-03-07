@@ -40,7 +40,7 @@ var seedComponents = []Component{
 		HealthEndpoint: "/healthz", HealthMethod: "GET", Icon: "email", Accent: "#0f62fe",
 		DependsOn: j(`["postgresql","polyon-dc","opensearch"]`), Status: "active"},
 	{ID: "mattermost", Name: "HELIOS Chat", Description: "팀 메신저 (Mattermost)", Category: "engine", SortOrder: 2,
-		ContainerName: "polyon-chat", Engine: "mattermost", Host: "polyon-chat", Port: 8065,
+		ContainerName: "polyon-mattermost", Engine: "mattermost", Host: "polyon-mattermost", Port: 8065,
 		HealthEndpoint: "/api/v4/system/ping", HealthMethod: "GET", Icon: "chat", Accent: "#0058CC",
 		DependsOn: j(`["postgresql","polyon-auth"]`), Status: "planned"},
 	{ID: "nextcloud", Name: "HELIOS Drive", Description: "문서 관리 (Nextcloud)", Category: "engine", SortOrder: 3,

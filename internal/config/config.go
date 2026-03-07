@@ -197,7 +197,7 @@ func Load() (*Config, error) {
 	c.StrapiURL = envOr("STRAPI_URL", "http://polyon-strapi:1337")
 	c.OperatonURL = envOr("OPERATON_URL", "http://polyon-operaton:8080")
 	c.N8nURL = envOr("N8N_URL", "http://polyon-n8n:5678")
-	c.MattermostURL = envOr("MATTERMOST_URL", "http://polyon-chat:8065")
+	c.MattermostURL = envOr("MATTERMOST_URL", "http://polyon-mattermost:8065")
 	c.Mem0URL = envOr("MEM0_URL", "http://polyon-mem0:8888")
 	c.OpenClawURL = envOr("OPENCLAW_URL", "http://polyon-agent:18789")
 
