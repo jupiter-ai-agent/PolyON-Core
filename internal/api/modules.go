@@ -96,67 +96,77 @@ func registerModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// TODO: Phase 2에서 이미지에서 manifest 추출 구현
-		// 현재는 stub으로 처리
-		moduleID := generateModuleID(req.Image)
+		// Phase 2: 이미지에서 module.yaml 추출
+		var manifestData []byte
+		var manifest *module.Manifest
+
+		if d.Kube != nil {
+			raw, err := d.Kube.ExtractModuleManifest(r.Context(), req.Image)
+			if err != nil {
+				log.Error().Err(err).Str("image", req.Image).Msg("registerModule: manifest extraction failed")
+				httputil.RespondError(w, http.StatusBadRequest, "EXTRACT_FAILED",
+					"모듈 매니페스트 추출 실패: "+err.Error())
+				return
+			}
+			m, err := module.ParseManifest(raw)
+			if err != nil {
+				log.Error().Err(err).Msg("registerModule: manifest parse failed")
+				httputil.RespondError(w, http.StatusBadRequest, "INVALID_MANIFEST",
+					"모듈 매니페스트 파싱 실패: "+err.Error())
+				return
+			}
+			manifest = m
+			manifestData = raw
+		} else {
+			// Fallback: K8s 없으면 이미지 이름에서 stub 생성
+			log.Warn().Msg("registerModule: K8s not available, using stub manifest")
+			manifest = &module.Manifest{
+				Metadata: module.Metadata{
+					ID:       generateModuleID(req.Image),
+					Name:     extractImageName(req.Image),
+					Version:  "1.0.0",
+					Category: "engine",
+					Icon:     "Application",
+					Accent:   "#0f62fe",
+				},
+			}
+			manifestData, _ = json.Marshal(manifest)
+		}
+
+		moduleID := manifest.Metadata.ID
 
 		// 기존 모듈 체크
 		existing, _ := d.Store.GetModule(r.Context(), moduleID)
 		if existing != nil {
-			httputil.RespondError(w, http.StatusConflict, "MODULE_EXISTS", "이미 등록된 모듈입니다")
+			httputil.RespondError(w, http.StatusConflict, "MODULE_EXISTS", "이미 등록된 모듈입니다: "+moduleID)
 			return
 		}
 
-		// stub manifest 생성
-		manifest := map[string]any{
-			"apiVersion": "polyon.io/v1",
-			"kind":       "Module",
-			"metadata": map[string]any{
-				"id":          moduleID,
-				"name":        extractImageName(req.Image),
-				"version":     "1.0.0",
-				"category":    "engine",
-				"icon":        "Application",
-				"accent":      "#0f62fe",
-				"description": "Module registered from " + req.Image,
-			},
-			"spec": map[string]any{
-				"engine": "unknown",
-				"resources": map[string]any{
-					"image": req.Image,
-				},
-				"admin": map[string]any{
-					"nav": map[string]any{
-						"title":       extractImageName(req.Image),
-						"section":     "SERVICES",
-						"icon":        "Application",
-						"defaultPath": "/" + moduleID,
-						"sortOrder":   50,
-					},
-				},
-			},
+		manifestJSON, _ := json.Marshal(manifest)
+		if manifestData != nil && len(manifestData) > len(manifestJSON) {
+			manifestJSON = manifestData
 		}
 
-		manifestJSON, _ := json.Marshal(manifest)
-		metadata := manifest["metadata"].(map[string]any)
+		requiresJSON, _ := json.Marshal(manifest.Spec.Requires)
+		optionalJSON, _ := json.Marshal(manifest.Spec.Optional)
 
-		module := store.Module{
+		mod := store.Module{
 			ID:          moduleID,
-			Name:        metadata["name"].(string),
-			Description: metadata["description"].(string),
-			Category:    metadata["category"].(string),
-			Version:     metadata["version"].(string),
-			Engine:      "unknown",
+			Name:        manifest.Metadata.Name,
+			Description: manifest.Metadata.Description,
+			Category:    manifest.Metadata.Category,
+			Version:     manifest.Metadata.Version,
+			Engine:      manifest.Spec.Engine,
 			Image:       req.Image,
-			Icon:        metadata["icon"].(string),
-			Accent:      metadata["accent"].(string),
+			Icon:        manifest.Metadata.Icon,
+			Accent:      manifest.Metadata.Accent,
 			Status:      "available",
-			Requires:    json.RawMessage("[]"),
-			OptionalDeps: json.RawMessage("[]"),
+			Requires:    requiresJSON,
+			OptionalDeps: optionalJSON,
 			Manifest:    manifestJSON,
 		}
 
-		if err := d.Store.CreateModule(r.Context(), module); err != nil {
+		if err := d.Store.CreateModule(r.Context(), mod); err != nil {
 			log.Error().Err(err).Msg("registerModule: DB insert failed")
 			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "모듈 등록 실패")
 			return
@@ -170,7 +180,7 @@ func registerModule(d *Deps) http.HandlerFunc {
 
 		httputil.RespondOK(w, map[string]any{
 			"status": "registered",
-			"module": module,
+			"module": mod,
 		})
 	}
 }

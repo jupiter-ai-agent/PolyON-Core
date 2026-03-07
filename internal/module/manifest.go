@@ -1,6 +1,30 @@
 package module
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// ParseManifest parses module.yaml content (YAML or JSON) into a Manifest struct.
+func ParseManifest(data []byte) (*Manifest, error) {
+	var m Manifest
+	// Try YAML first (superset of JSON)
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		// Try JSON
+		if err2 := json.Unmarshal(data, &m); err2 != nil {
+			return nil, fmt.Errorf("parse manifest: yaml=%w, json=%w", err, err2)
+		}
+	}
+	if m.Metadata.ID == "" {
+		return nil, fmt.Errorf("manifest metadata.id is required")
+	}
+	if m.Kind != "Module" {
+		return nil, fmt.Errorf("manifest kind must be 'Module', got '%s'", m.Kind)
+	}
+	return &m, nil
+}
 
 // Manifest represents the module.yaml structure according to PP (PolyON Platform) specification.
 type Manifest struct {
