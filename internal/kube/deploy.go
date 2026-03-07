@@ -113,8 +113,35 @@ func (c *Client) DeleteModule(ctx context.Context, moduleID string) error {
 		}
 	}
 
-	// Note: PVCs are NOT deleted by default to preserve data
-	// They can be manually deleted if needed
+	// 6. Delete PVCs (label selector)
+	pvcList, err := c.cs.CoreV1().PersistentVolumeClaims(c.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("polyon.io/module=%s", moduleID),
+	})
+	if err == nil {
+		for _, pvc := range pvcList.Items {
+			if err := c.cs.CoreV1().PersistentVolumeClaims(c.namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{}); err != nil {
+				log.Warn().Err(err).Str("pvc", pvc.Name).Msg("Failed to delete PVC")
+			} else {
+				log.Info().Str("pvc", pvc.Name).Msg("PVC deleted")
+			}
+		}
+	}
+	// Also try name-based cleanup
+	pvcPrefix := fmt.Sprintf("polyon-%s-", moduleID)
+	allPvcs, _ := c.cs.CoreV1().PersistentVolumeClaims(c.namespace).List(ctx, metav1.ListOptions{})
+	if allPvcs != nil {
+		for _, pvc := range allPvcs.Items {
+			if len(pvc.Name) > len(pvcPrefix) && pvc.Name[:len(pvcPrefix)] == pvcPrefix {
+				if err := c.cs.CoreV1().PersistentVolumeClaims(c.namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{}); err != nil {
+					if !errors.IsNotFound(err) {
+						log.Warn().Err(err).Str("pvc", pvc.Name).Msg("Failed to delete PVC by name")
+					}
+				} else {
+					log.Info().Str("pvc", pvc.Name).Msg("PVC deleted by name match")
+				}
+			}
+		}
+	}
 
 	log.Info().Str("module_id", moduleID).Msg("K8s resource cleanup completed")
 	return nil
@@ -267,10 +294,14 @@ func (c *Client) createModulePVCs(ctx context.Context, moduleID string, pvcSpecs
 
 		_, err = c.cs.CoreV1().PersistentVolumeClaims(c.namespace).Create(ctx, pvc, metav1.CreateOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to create PVC %s: %w", pvcName, err)
+			if errors.IsAlreadyExists(err) {
+				log.Info().Str("pvc_name", pvcName).Msg("PVC already exists, reusing")
+			} else {
+				return fmt.Errorf("failed to create PVC %s: %w", pvcName, err)
+			}
+		} else {
+			log.Info().Str("pvc_name", pvcName).Str("size", pvcSpec.Size).Msg("PVC created")
 		}
-
-		log.Info().Str("pvc_name", pvcName).Str("size", pvcSpec.Size).Msg("PVC created")
 	}
 
 	return nil
