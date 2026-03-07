@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -108,14 +106,8 @@ func ChatSyncLDAPUsers(d *Deps) (*ChatSyncResult, error) {
 		mmUser, exists := mmUserMap[sAMAccountName]
 
 		if !exists {
-			// Create new user
-			password, err := generateRandomPassword()
-			if err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("Failed to generate password for %s: %v", sAMAccountName, err))
-				continue
-			}
-
-			newUser, err := mmClient.CreateUser(sAMAccountName, email, firstName, lastName, nickname, title, password)
+			// Create new user (no password — LDAP auth via auth_data/auth_service)
+			newUser, err := mmClient.CreateUser(sAMAccountName, email, firstName, lastName, nickname, title, "")
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("Failed to create user %s: %v", sAMAccountName, err))
 				continue
@@ -206,13 +198,4 @@ func ChatSyncLDAPUsers(d *Deps) (*ChatSyncResult, error) {
 		Msg("LDAP sync completed")
 
 	return result, nil
-}
-
-// generateRandomPassword generates a random password for new users.
-func generateRandomPassword() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
 }

@@ -237,12 +237,12 @@ func (c *Client) SendPost(channelID, message string) error {
 	return nil
 }
 
-// CreateUser creates a Mattermost user via POST /api/v4/users
+// CreateUser creates a Mattermost user via POST /api/v4/users.
+// For LDAP auth users, password must NOT be set (auth_data + auth_service only).
 func (c *Client) CreateUser(username, email, firstName, lastName, nickname, position, password string) (*User, error) {
 	body := map[string]interface{}{
 		"username":     username,
 		"email":        email,
-		"password":     password,
 		"first_name":   firstName,
 		"last_name":    lastName,
 		"nickname":     nickname,
