@@ -308,3 +308,140 @@ func (c *Client) groupFoldersDelete(path string) ([]byte, error) {
 	defer resp.Body.Close()
 	return io.ReadAll(resp.Body)
 }
+
+func (c *Client) ocsPut(path string, data url.Values) ([]byte, error) {
+	reqURL := c.baseURL + "/ocs/v2.php" + path + "?format=json"
+	req, _ := http.NewRequest("PUT", reqURL, strings.NewReader(data.Encode()))
+	req.SetBasicAuth(c.adminUser, c.adminPass)
+	req.Header.Set("OCS-APIRequest", "true")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// OCS User Provisioning API
+// ──────────────────────────────────────────────────────────────────────────────
+
+// OCSUser represents a Nextcloud user from OCS API.
+type OCSUser struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayname"`
+	Email       string `json:"email"`
+	Enabled     bool   `json:"enabled"`
+	Backend     string `json:"backend"` // "Database" or "LDAP"
+}
+
+// ListOCSUsers returns all user IDs from Nextcloud.
+// GET /ocs/v2.php/cloud/users
+func (c *Client) ListOCSUsers() ([]string, error) {
+	body, err := c.ocsGet("/cloud/users")
+	if err != nil {
+		return nil, err
+	}
+
+	var ocs ocsResponse
+	if err := json.Unmarshal(body, &ocs); err != nil {
+		return nil, err
+	}
+
+	if ocs.OCS.Meta.StatusCode >= 300 {
+		return nil, fmt.Errorf("OCS error %d: %s", ocs.OCS.Meta.StatusCode, ocs.OCS.Meta.Message)
+	}
+
+	var data struct {
+		Users []string `json:"users"`
+	}
+	if err := json.Unmarshal(ocs.OCS.Data, &data); err != nil {
+		return nil, err
+	}
+
+	return data.Users, nil
+}
+
+// GetOCSUser returns user details.
+// GET /ocs/v2.php/cloud/users/{userid}
+func (c *Client) GetOCSUser(userID string) (*OCSUser, error) {
+	path := fmt.Sprintf("/cloud/users/%s", url.PathEscape(userID))
+	body, err := c.ocsGet(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var ocs ocsResponse
+	if err := json.Unmarshal(body, &ocs); err != nil {
+		return nil, err
+	}
+
+	if ocs.OCS.Meta.StatusCode >= 300 {
+		return nil, fmt.Errorf("OCS error %d: %s", ocs.OCS.Meta.StatusCode, ocs.OCS.Meta.Message)
+	}
+
+	var user OCSUser
+	if err := json.Unmarshal(ocs.OCS.Data, &user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// CreateOCSUser creates a local user via OCS API.
+// POST /ocs/v2.php/cloud/users (form: userid, password, displayName, email)
+func (c *Client) CreateOCSUser(userID, password, displayName, email string) error {
+	data := url.Values{
+		"userid":      {userID},
+		"password":    {password},
+		"displayName": {displayName},
+		"email":       {email},
+	}
+
+	body, err := c.ocsPost("/cloud/users", data)
+	if err != nil {
+		return err
+	}
+
+	var ocs ocsResponse
+	if err := json.Unmarshal(body, &ocs); err != nil {
+		return err
+	}
+
+	if ocs.OCS.Meta.StatusCode == 102 {
+		return fmt.Errorf("user already exists")
+	}
+	if ocs.OCS.Meta.StatusCode >= 300 {
+		return fmt.Errorf("OCS error %d: %s", ocs.OCS.Meta.StatusCode, ocs.OCS.Meta.Message)
+	}
+
+	return nil
+}
+
+// UpdateOCSUser updates a single user field.
+// PUT /ocs/v2.php/cloud/users/{userid} (form: key, value)
+func (c *Client) UpdateOCSUser(userID, key, value string) error {
+	path := fmt.Sprintf("/cloud/users/%s", url.PathEscape(userID))
+	data := url.Values{
+		"key":   {key},
+		"value": {value},
+	}
+
+	body, err := c.ocsPut(path, data)
+	if err != nil {
+		return err
+	}
+
+	var ocs ocsResponse
+	if err := json.Unmarshal(body, &ocs); err != nil {
+		return err
+	}
+
+	if ocs.OCS.Meta.StatusCode >= 300 {
+		return fmt.Errorf("OCS error %d: %s", ocs.OCS.Meta.StatusCode, ocs.OCS.Meta.Message)
+	}
+
+	return nil
+}

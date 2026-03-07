@@ -44,6 +44,16 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 				d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
 					"AD/LDAP binding configured and synced", nil)
 			}
+		case "nextcloud":
+			if err := provisionNextcloudLDAP(ctx, d, moduleID, spec, dirInfo); err != nil {
+				log.Error().Err(err).Str("module_id", moduleID).Msg("Nextcloud LDAP provisioning failed")
+				d.Store.CreateModuleEvent(ctx, moduleID, "provision", "warning",
+					"LDAP binding failed: "+err.Error(), nil)
+			} else {
+				log.Info().Str("module_id", moduleID).Msg("Nextcloud LDAP provisioning completed")
+				d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
+					"AD/LDAP user sync completed", nil)
+			}
 		default:
 			log.Warn().Str("engine", spec.LDAP.Engine).Msg("Unknown LDAP engine, skipping")
 		}
@@ -212,5 +222,46 @@ func mmAPIPost(baseURL, token, path string) error {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
+	return nil
+}
+
+// provisionNextcloudLDAP configures Nextcloud LDAP backend and syncs users.
+func provisionNextcloudLDAP(ctx context.Context, d *Deps, moduleID string, spec module.Spec, dir DirectoryConnectInfo) error {
+	// TODO: K8s 환경에서 occ 명령으로 LDAP 백엔드 설정 (선택적)
+	// GetPodsByLabel 메서드가 kube.Client에 없어서 구현하지 않음
+	// 필요 시 kubectl exec를 통해 수동으로 LDAP 백엔드 설정
+	/*
+	if d.Kube != nil {
+		pods, _ := d.Kube.GetPodsByLabel(ctx, "app=polyon-drive")
+		if len(pods) > 0 {
+			podName := pods[0]
+			occCmds := [][]string{
+				{"php", "occ", "ldap:create-empty-config"},
+				{"php", "occ", "ldap:set-config", "s01", "ldapHost", dir.FQDN},
+				{"php", "occ", "ldap:set-config", "s01", "ldapPort", fmt.Sprintf("%d", dir.Port)},
+				{"php", "occ", "ldap:set-config", "s01", "ldapBase", dir.BaseDN},
+				{"php", "occ", "ldap:set-config", "s01", "ldapAgentName", dir.AdminDN},
+				{"php", "occ", "ldap:set-config", "s01", "ldapAgentPassword", d.Cfg.DCAdminPassword},
+				{"php", "occ", "ldap:set-config", "s01", "ldapUserFilter", "(&(objectClass=user)(!(objectClass=computer))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"},
+				{"php", "occ", "ldap:set-config", "s01", "ldapLoginFilter", "(&(objectClass=user)(|(sAMAccountName=%uid)(mail=%uid)))"},
+				{"php", "occ", "ldap:set-config", "s01", "ldapUserName", "sAMAccountName"},
+				{"php", "occ", "ldap:set-config", "s01", "ldapUserDisplayName", "displayName"},
+				{"php", "occ", "ldap:set-config", "s01", "ldapEmailAttribute", "mail"},
+				{"php", "occ", "ldap:set-config", "s01", "ldapConfigurationActive", "1"},
+			}
+			for _, cmd := range occCmds {
+				_ = d.Kube.ExecInPod(ctx, podName, cmd)
+			}
+			log.Info().Str("pod", podName).Msg("Nextcloud LDAP backend configured via occ")
+		}
+	}
+	*/
+
+	// OCS API로 사용자 동기화
+	result, err := DriveSyncLDAPUsers(d)
+	if err != nil {
+		return err
+	}
+	log.Info().Int("created", result.Created).Int("updated", result.Updated).Msg("Nextcloud user sync completed")
 	return nil
 }

@@ -19,6 +19,7 @@ func RegisterDrive(r chi.Router, d *Deps) {
 		r.Post("/folders", createFolder(d))
 		r.Put("/folders/{id}/quota", setFolderQuota(d))
 		r.Delete("/folders/{id}", deleteFolder(d))
+		r.Post("/ldap-sync", driveLDAPSync(d))
 	})
 }
 
@@ -168,5 +169,16 @@ func deleteFolder(d *Deps) http.HandlerFunc {
 			auth.GetActor(r), httputil.ClientIP(r))
 
 		httputil.RespondOK(w, map[string]interface{}{"success": true})
+	}
+}
+
+func driveLDAPSync(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		result, err := DriveSyncLDAPUsers(d)
+		if err != nil {
+			httputil.RespondError(w, 500, "SYNC_ERROR", err.Error())
+			return
+		}
+		httputil.RespondJSON(w, 200, result)
 	}
 }
