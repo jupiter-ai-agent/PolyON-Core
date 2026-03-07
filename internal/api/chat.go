@@ -403,7 +403,12 @@ func chatGetStats(d *Deps) http.HandlerFunc {
 
 func chatLDAPSync(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		chatProxy(d, "POST", "/api/v4/ldap/sync", nil, w, r)
+		result, err := ChatSyncLDAPUsers(d)
+		if err != nil {
+			httputil.RespondError(w, 500, "sync_error", err.Error())
+			return
+		}
+		httputil.RespondJSON(w, 200, result)
 	}
 }
 

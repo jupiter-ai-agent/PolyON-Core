@@ -43,9 +43,16 @@ type pingResponse struct {
 
 // User represents a Mattermost user.
 type User struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	Nickname    string `json:"nickname"`
+	Position    string `json:"position"`
+	AuthData    string `json:"auth_data"`
+	AuthService string `json:"auth_service"`
+	DeleteAt    int64  `json:"delete_at"`
 }
 
 // Team represents a Mattermost team.

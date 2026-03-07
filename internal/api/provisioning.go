@@ -119,9 +119,17 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 		return fmt.Errorf("put config: %w", err)
 	}
 
-	// 5. LDAP Sync 실행
-	if err := mmAPIPost(mmURL, token, "/api/v4/ldap/sync"); err != nil {
-		log.Warn().Err(err).Msg("LDAP sync trigger failed")
+	// 5. Custom LDAP Sync 실행 (Team Edition 호환)
+	result, err := ChatSyncLDAPUsers(d)
+	if err != nil {
+		log.Warn().Err(err).Msg("Custom LDAP sync failed")
+	} else {
+		log.Info().
+			Int("created", result.Created).
+			Int("updated", result.Updated).
+			Int("skipped", result.Skipped).
+			Int("errors", len(result.Errors)).
+			Msg("Custom LDAP sync completed")
 	}
 
 	log.Info().

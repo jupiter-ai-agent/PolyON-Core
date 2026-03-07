@@ -236,3 +236,99 @@ func (c *Client) SendPost(channelID, message string) error {
 	}
 	return nil
 }
+
+// CreateUser creates a Mattermost user via POST /api/v4/users
+func (c *Client) CreateUser(username, email, firstName, lastName, nickname, position, password string) (*User, error) {
+	body := map[string]interface{}{
+		"username":     username,
+		"email":        email,
+		"password":     password,
+		"first_name":   firstName,
+		"last_name":    lastName,
+		"nickname":     nickname,
+		"position":     position,
+		"auth_service": "ldap",
+		"auth_data":    username,
+	}
+	resp, err := c.postJSON("/api/v4/users", body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if err := checkResp(resp); err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+	var u User
+	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
+		return nil, fmt.Errorf("decode created user: %w", err)
+	}
+	return &u, nil
+}
+
+// putJSON sends an authenticated PUT request with a JSON body and returns the response.
+func (c *Client) putJSON(path string, body interface{}) (*http.Response, error) {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPut, c.baseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http put %s: %w", path, err)
+	}
+	return resp, nil
+}
+
+// UpdateUser updates user fields via PUT /api/v4/users/{id}/patch
+func (c *Client) UpdateUser(userID string, patch map[string]interface{}) error {
+	resp, err := c.putJSON("/api/v4/users/"+userID+"/patch", patch)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err := checkResp(resp); err != nil {
+		return fmt.Errorf("update user: %w", err)
+	}
+	return nil
+}
+
+// ListAllUsers returns all users with pagination
+func (c *Client) ListAllUsers() ([]User, error) {
+	var allUsers []User
+	page := 0
+	perPage := 200
+
+	for {
+		path := fmt.Sprintf("/api/v4/users?page=%d&per_page=%d", page, perPage)
+		resp, err := c.get(path)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if err := checkResp(resp); err != nil {
+			return nil, fmt.Errorf("list users page %d: %w", page, err)
+		}
+
+		var users []User
+		if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+			return nil, fmt.Errorf("decode users page %d: %w", page, err)
+		}
+
+		allUsers = append(allUsers, users...)
+
+		// If we got fewer than perPage users, we're done
+		if len(users) < perPage {
+			break
+		}
+		page++
+	}
+
+	return allUsers, nil
+}
