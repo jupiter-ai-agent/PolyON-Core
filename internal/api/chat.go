@@ -21,7 +21,7 @@ func mattermostURL(d *Deps) string {
 	if u := os.Getenv("MATTERMOST_URL"); u != "" {
 		return u
 	}
-	return "http://polyon-chat:8065"
+	return "http://polyon-mattermost:8065"
 }
 
 func mattermostToken(d *Deps) string {
