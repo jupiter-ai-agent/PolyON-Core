@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 	"github.com/triangles/polyon-core/internal/httputil"
 )
 
@@ -71,6 +72,7 @@ func chatProxy(d *Deps, method, path string, body io.Reader, w http.ResponseWrit
 
 	resp, err := chatClient.Do(req)
 	if err != nil {
+		log.Error().Err(err).Str("url", mattermostURL(d)+fullPath).Msg("Mattermost proxy error")
 		httputil.RespondError(w, 502, "gateway_error", "mattermost unreachable: "+err.Error())
 		return
 	}
