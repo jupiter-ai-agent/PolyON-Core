@@ -34,7 +34,7 @@ spec:
 
     image: jupitertriangles/polyon-chat:v2.0.0
     replicas: 1
-    command: ["mattermost", "server"]
+    command: ["bin/mattermost", "server"]
     
     ports:
       - name: http
