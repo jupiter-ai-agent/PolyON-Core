@@ -1,0 +1,163 @@
+# ── PP Module Manifest Spec v1 ──
+apiVersion: polyon.io/v1
+kind: Module
+
+# ── 기본 정보 ──
+metadata:
+  id: nextcloud
+  name: PolyON Drive
+  version: 1.0.0
+  category: engine
+  icon: Folder
+  accent: "#0082C9"
+  description: "파일 스토리지 · 팀 폴더 · 문서 공유"
+  vendor: Triangle.s
+  license: AGPL-3.0
+
+spec:
+  engine: nextcloud
+
+  # ── 의존성 ──
+  requires:
+    - id: postgresql
+      reason: "파일 메타데이터 저장"
+    - id: keycloak
+      reason: "SSO 인증 연동"
+
+  optional:
+    - id: opensearch
+      feature: "파일 전문검색"
+
+  # ── K8s 리소스 ──
+  resources:
+    statefulset: true
+    image: nextcloud:30-apache
+    replicas: 1
+
+    ports:
+      - name: http
+        containerPort: 80
+
+    env:
+      - name: POSTGRES_HOST
+        value: polyon-db
+      - name: POSTGRES_DB
+        value: nextcloud
+      - name: POSTGRES_USER
+        valueFrom:
+          secretKeyRef:
+            name: polyon-module-nextcloud
+            key: DB_USER
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: polyon-module-nextcloud
+            key: DB_PASSWORD
+      - name: NEXTCLOUD_ADMIN_USER
+        value: admin
+      - name: NEXTCLOUD_ADMIN_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: polyon-module-nextcloud
+            key: ADMIN_PASSWORD
+      - name: NEXTCLOUD_TRUSTED_DOMAINS
+        value: "drive.cmars.com"
+
+    health:
+      path: /status.php
+      port: 80
+      initialDelay: 60
+      period: 15
+
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+
+    pvc:
+      - name: data
+        size: 50Gi
+        mountPath: /var/www/html
+
+    configMaps: []
+
+  # ── 네트워크 ──
+  ingress:
+    subdomain: drive
+    port: 80
+    annotations: {}
+
+  # ── DB 프로비저닝 ──
+  database:
+    create: true
+    name: nextcloud
+    user: nextcloud
+    migrations: auto
+
+  # ── AD/LDAP 자동 바인딩 ──
+  ldap:
+    bind: true
+    engine: nextcloud
+    settings:
+      ldapUserFilter: "(&(objectClass=user)(!(objectClass=computer))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+      ldapLoginFilter: "(&(objectClass=user)(|(sAMAccountName=%uid)(mail=%uid)))"
+      ldapUserName: sAMAccountName
+      ldapUserDisplayName: displayName
+      ldapEmailAttribute: mail
+      ldapGroupFilter: "(&(objectClass=group))"
+
+  # ── OIDC 클라이언트 ──
+  oidc:
+    create: true
+    realm: helios
+    clientId: nextcloud
+    publicClient: false
+    redirectUris:
+      - "https://drive.cmars.com/*"
+    webOrigins:
+      - "https://drive.cmars.com"
+
+  # ── Admin Console UI ──
+  admin:
+    nav:
+      title: Drive
+      section: SERVICES
+      icon: Folder
+      defaultPath: /drive
+      sortOrder: 30
+      items:
+        - label: 개요
+          path: /drive
+          icon: Folder
+        - type: divider
+        - label: 팀 폴더
+          path: /drive/folders
+          icon: FolderShared
+        - label: 사용자 관리
+          path: /drive/users
+          icon: User
+        - type: divider
+        - label: 설정
+          path: /drive/settings
+          icon: Settings
+
+    ui:
+      entry: entry.js
+      pages:
+        - path: /drive
+          component: DrivePage
+        - path: /drive/folders
+          component: DriveFoldersPage
+        - path: /drive/users
+          component: DriveUsersPage
+        - path: /drive/settings
+          component: DriveSettingsPage
+
+  # ── 삭제 정책 ──
+  uninstall:
+    confirm: true
+    dataPolicy: ask
+    resources:
+      databases: [nextcloud]
+      pvcs: [polyon-nextcloud-data]
+      oidcClients: [nextcloud]
+      secrets: [polyon-module-nextcloud]
