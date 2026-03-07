@@ -97,7 +97,6 @@ func registerModule(d *Deps) http.HandlerFunc {
 		}
 
 		// Phase 2: 이미지에서 module.yaml 추출
-		var manifestData []byte
 		var manifest *module.Manifest
 
 		if d.Kube != nil {
@@ -116,7 +115,6 @@ func registerModule(d *Deps) http.HandlerFunc {
 				return
 			}
 			manifest = m
-			manifestData = raw
 		} else {
 			// Fallback: K8s 없으면 이미지 이름에서 stub 생성
 			log.Warn().Msg("registerModule: K8s not available, using stub manifest")
@@ -130,7 +128,7 @@ func registerModule(d *Deps) http.HandlerFunc {
 					Accent:   "#0f62fe",
 				},
 			}
-			manifestData, _ = json.Marshal(manifest)
+			// stub — manifestJSON은 아래에서 json.Marshal(manifest)로 생성
 		}
 
 		moduleID := manifest.Metadata.ID
@@ -142,10 +140,8 @@ func registerModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
+		// manifest를 항상 JSON으로 변환 (YAML → JSON, DB jsonb 컬럼)
 		manifestJSON, _ := json.Marshal(manifest)
-		if manifestData != nil && len(manifestData) > len(manifestJSON) {
-			manifestJSON = manifestData
-		}
 
 		requiresJSON, _ := json.Marshal(manifest.Spec.Requires)
 		optionalJSON, _ := json.Marshal(manifest.Spec.Optional)
