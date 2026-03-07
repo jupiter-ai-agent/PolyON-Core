@@ -32,7 +32,7 @@ spec:
   resources:
     statefulset: false              # true면 StatefulSet, false면 Deployment (기본: false)
 
-    image: jupitertriangles/polyon-chat:v1.0.0
+    image: jupitertriangles/polyon-chat:v2.0.0
     replicas: 1
     command: ["mattermost", "server"]
     
