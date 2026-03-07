@@ -5,9 +5,32 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"net/url"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
+
+// replaceDBInConnStr replaces the database name in a PostgreSQL connection string.
+func replaceDBInConnStr(connStr string, newDB string) string {
+	u, err := url.Parse(connStr)
+	if err != nil || u.Scheme == "" {
+		// Try keyword=value format
+		if strings.Contains(connStr, "dbname=") {
+			parts := strings.Fields(connStr)
+			for i, p := range parts {
+				if strings.HasPrefix(p, "dbname=") {
+					parts[i] = "dbname=" + newDB
+				}
+			}
+			return strings.Join(parts, " ")
+		}
+		return ""
+	}
+	u.Path = "/" + newDB
+	return u.String()
+}
 
 // CreateModuleDatabase creates a new database and user for a module.
 func (s *Store) CreateModuleDatabase(ctx context.Context, dbName, dbUser, dbPassword string) error {
@@ -35,6 +58,21 @@ func (s *Store) CreateModuleDatabase(ctx context.Context, dbName, dbUser, dbPass
 	grantSQL := fmt.Sprintf(`GRANT ALL PRIVILEGES ON DATABASE "%s" TO "%s"`, dbName, dbUser)
 	if _, err := s.pool.Exec(ctx, grantSQL); err != nil {
 		log.Warn().Err(err).Str("db_name", dbName).Str("db_user", dbUser).Msg("Failed to grant privileges")
+	}
+
+	// Grant schema permissions (connect to the new database)
+	connStr := s.pool.Config().ConnString()
+	// Replace database name in connection string
+	newConnStr := replaceDBInConnStr(connStr, dbName)
+	if newConnStr != "" {
+		newPool, err := pgxpool.New(ctx, newConnStr)
+		if err == nil {
+			defer newPool.Close()
+			schemaSQL := fmt.Sprintf(`GRANT ALL ON SCHEMA public TO "%s"`, dbUser)
+			if _, err := newPool.Exec(ctx, schemaSQL); err != nil {
+				log.Warn().Err(err).Msg("Failed to grant schema permissions")
+			}
+		}
 	}
 
 	log.Info().Str("db_name", dbName).Str("db_user", dbUser).Msg("Module database created successfully")
