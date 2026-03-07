@@ -212,7 +212,7 @@ func (s *Store) migrateComponents() {
 				host = EXCLUDED.host, port = EXCLUDED.port,
 				health_endpoint = EXCLUDED.health_endpoint, health_method = EXCLUDED.health_method,
 				icon = EXCLUDED.icon, accent = EXCLUDED.accent,
-				depends_on = EXCLUDED.depends_on, status = EXCLUDED.status,
+				depends_on = EXCLUDED.depends_on,
 				updated_at = NOW()
 		`, c.ID, c.Name, c.Description, c.Category, c.SortOrder,
 			c.ContainerName, c.Engine, c.Host, c.Port, c.HealthEndpoint, c.HealthMethod,
