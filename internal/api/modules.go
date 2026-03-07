@@ -363,6 +363,12 @@ func installModule(d *Deps) http.HandlerFunc {
 
 		log.Info().Str("module_id", id).Str("version", moduleRecord.Version).Msg("Module installed successfully")
 
+		// component 상태도 동기화
+		if _, err := d.Store.Pool().Exec(r.Context(),
+			`UPDATE polyon_components SET status='active' WHERE id=$1`, id); err != nil {
+			log.Warn().Err(err).Str("module_id", id).Msg("Failed to sync component status")
+		}
+
 		httputil.RespondOK(w, map[string]any{
 			"status": "installed",
 			"module": map[string]any{
@@ -469,6 +475,12 @@ func uninstallModule(d *Deps) http.HandlerFunc {
 			})
 
 		log.Info().Str("module_id", id).Str("data_policy", req.DataPolicy).Msg("Module uninstalled successfully")
+
+		// component 상태 복원
+		if _, err := d.Store.Pool().Exec(r.Context(),
+			`UPDATE polyon_components SET status='planned' WHERE id=$1`, id); err != nil {
+			log.Warn().Err(err).Str("module_id", id).Msg("Failed to sync component status")
+		}
 
 		httputil.RespondOK(w, map[string]any{
 			"status":     "uninstalled",
