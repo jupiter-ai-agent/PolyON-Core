@@ -296,16 +296,17 @@ func installModule(d *Deps) http.HandlerFunc {
 			manifest.Spec.Ingress.Subdomain = ""
 		}
 
-		// 3. 의존성 체크 — K8s 인프라 서비스 실제 상태 조회
+		// 3. 의존성 체크 — infra_services DB + modules DB 조회
 		for _, dep := range manifest.Spec.Requires {
-			// 1) K8s에서 실제 서비스 존재 확인 (polyon-{id} 서비스)
-			if d.Kube != nil && d.Kube.IsServiceAvailable(r.Context(), dep.ID) {
-				continue // 인프라 서비스 Running
+			// 1) polyon_infra_services 테이블에서 확인 (Foundation 인프라)
+			infraSvc, err := d.Store.GetInfraService(r.Context(), dep.ID)
+			if err == nil && infraSvc.Enabled {
+				continue // 인프라 서비스 등록됨
 			}
-			// 2) 모듈 테이블에서 확인
+			// 2) polyon_modules 테이블에서 확인 (설치된 모듈)
 			depModule, err := d.Store.GetModule(r.Context(), dep.ID)
 			if err == nil && depModule.Status == "active" {
-				continue // 설치된 모듈
+				continue
 			}
 			httputil.RespondError(w, http.StatusPreconditionFailed, "DEPENDENCY_NOT_MET",
 				fmt.Sprintf("필수 의존성 '%s'이 설치되지 않았습니다", dep.ID))

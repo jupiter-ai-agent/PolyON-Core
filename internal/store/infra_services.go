@@ -22,6 +22,19 @@ type InfraService struct {
 
 // seedInfraServices is the canonical infrastructure service catalog seeded into DB on first run.
 var seedInfraServices = []InfraService{
+	// ── Foundation 인프라 서비스 ──
+	{
+		ID: "postgresql", Name: "PostgreSQL", Host: "polyon-db", Port: 5432,
+		Protocol: "tcp", Category: "infra", Enabled: true,
+	},
+	{
+		ID: "redis", Name: "Redis", Host: "polyon-redis", Port: 6379,
+		Protocol: "tcp", Category: "infra", Enabled: true,
+	},
+	{
+		ID: "samba-dc", Name: "Samba AD DC", Host: "polyon-dc", Port: 389,
+		Protocol: "ldap", Category: "infra", Enabled: true,
+	},
 	// ── infra (00-infra.yml services + :1111 management routers) ──
 	{
 		ID: "sentinel", Name: "Sentinel", Host: "polyon-sentinel", Port: 8080,
