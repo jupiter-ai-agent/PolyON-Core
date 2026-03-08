@@ -233,8 +233,7 @@ func RegisterChat(r chi.Router, d *Deps) {
 		// Stats
 		r.Get("/stats", chatGetStats(d))
 
-		// LDAP sync
-		r.Post("/ldap-sync", chatLDAPSync(d))
+		// LDAP sync removed — OIDC JIT provisioning
 
 		// System info
 		r.Get("/ping", chatPing(d))
@@ -396,19 +395,6 @@ func chatPutConfig(d *Deps) http.HandlerFunc {
 func chatGetStats(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		chatProxy(d, "GET", "/api/v4/analytics/old", nil, w, r)
-	}
-}
-
-// ── LDAP sync ──
-
-func chatLDAPSync(d *Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		result, err := ChatSyncLDAPUsers(d)
-		if err != nil {
-			httputil.RespondError(w, 500, "sync_error", err.Error())
-			return
-		}
-		httputil.RespondJSON(w, 200, result)
 	}
 }
 

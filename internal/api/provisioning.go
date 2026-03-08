@@ -62,21 +62,9 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 	// 엔진별 특별 처리
 	switch spec.Engine {
 	case "affine":
-		log.Info().Str("module_id", moduleID).Msg("Starting Wiki LDAP sync with RustFS storage allocation")
-		result, err := WikiSyncLDAPUsers(d)
-		if err != nil {
-			log.Error().Err(err).Str("module_id", moduleID).Msg("Wiki LDAP sync failed")
-			d.Store.CreateModuleEvent(ctx, moduleID, "provision", "warning",
-				"Wiki LDAP sync failed: "+err.Error(), nil)
-		} else {
-			log.Info().
-				Int("created", result.BucketsCreated).
-				Int("skipped", result.Skipped).
-				Str("module_id", moduleID).
-				Msg("Wiki LDAP sync completed")
-			d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
-				fmt.Sprintf("RustFS 스토리지 할당: %d개 버킷 생성, %d개 스킵", result.BucketsCreated, result.Skipped), nil)
-		}
+		log.Info().Str("module_id", moduleID).Msg("AFFiNE uses OIDC JIT — users auto-provisioned on first login")
+		d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
+			"OIDC JIT — 사용자는 첫 로그인 시 자동 생성됩니다", nil)
 	}
 }
 
@@ -116,25 +104,20 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 		return fmt.Errorf("get config: %w", err)
 	}
 
-	// 2. LDAP 설정 — Directory API 정보 기반으로 동적 구성
-	ldapSettings := map[string]interface{}{
-		"Enable":                       true,
-		"EnableSync":                   true,
-		"LdapServer":                   dir.FQDN,
-		"LdapPort":                     dir.Port,
-		"ConnectionSecurity":           "",
-		"BaseDN":                       dir.BaseDN,
-		"BindUsername":                  dir.AdminDN,
-		"BindPassword":                 d.Cfg.DCAdminPassword,
-		"SkipCertificateVerification":  true,
-		"SyncIntervalMinutes":          60,
-		"QueryTimeout":                 60,
-		"MaxPageSize":                  1500,
+	// 2. OIDC 설정 — Keycloak OpenID Connect
+	oidcSettings := map[string]interface{}{
+		"Enable":            true,
+		"Id":                "mattermost",
+		"Secret":            "mattermost-oidc-secret-2026",
+		"DiscoveryEndpoint": d.Cfg.KeycloakURL + "/realms/polyon/.well-known/openid-configuration",
+		"ButtonText":        "PolyON SSO 로그인",
+		"ButtonColor":       "#FF7F11",
+		"Scope":             "profile openid email",
 	}
 
-	// manifest의 settings 오버레이 (UserFilter, attribute mappings 등)
-	for k, v := range spec.LDAP.Settings {
-		ldapSettings[k] = v
+	// LDAP 비활성화
+	ldapSettings := map[string]interface{}{
+		"Enable": false,
 	}
 
 	// 3. config에 머지
@@ -142,6 +125,7 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 	if !ok {
 		return fmt.Errorf("unexpected config format")
 	}
+	configMap["OpenIdSettings"] = oidcSettings
 	configMap["LdapSettings"] = ldapSettings
 
 	// 4. PUT config
@@ -149,23 +133,7 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 		return fmt.Errorf("put config: %w", err)
 	}
 
-	// 5. Custom LDAP Sync 실행 (Team Edition 호환)
-	result, err := ChatSyncLDAPUsers(d)
-	if err != nil {
-		log.Warn().Err(err).Msg("Custom LDAP sync failed")
-	} else {
-		log.Info().
-			Int("created", result.Created).
-			Int("updated", result.Updated).
-			Int("skipped", result.Skipped).
-			Int("errors", len(result.Errors)).
-			Msg("Custom LDAP sync completed")
-	}
-
-	log.Info().
-		Str("server", dir.FQDN).
-		Str("base_dn", dir.BaseDN).
-		Msg("Mattermost LDAP configured via Directory API")
+	log.Info().Msg("Mattermost OIDC configured — users auto-provisioned on first login")
 
 	return nil
 }
@@ -277,11 +245,7 @@ func provisionNextcloudLDAP(ctx context.Context, d *Deps, moduleID string, spec 
 	}
 	*/
 
-	// OCS API로 사용자 동기화
-	result, err := DriveSyncLDAPUsers(d)
-	if err != nil {
-		return err
-	}
-	log.Info().Int("created", result.Created).Int("updated", result.Updated).Msg("Nextcloud user sync completed")
+	// OIDC JIT — Nextcloud user_oidc 앱이 첫 로그인 시 자동 프로비저닝
+	log.Info().Msg("Nextcloud OIDC configured — users auto-provisioned on first login")
 	return nil
 }
