@@ -725,6 +725,22 @@ func (c *Client) PatchSecret(ctx context.Context, secretName string, data map[st
 }
 
 // ExecInPod runs a command in a pod (best-effort, no output capture).
+// IsServiceAvailable checks if a Foundation service is running in K8s.
+// Looks for service named "polyon-{id}" with at least one ready endpoint.
+func (c *Client) IsServiceAvailable(ctx context.Context, serviceID string) bool {
+	names := []string{
+		fmt.Sprintf("polyon-%s", serviceID),
+		serviceID,
+	}
+	for _, name := range names {
+		_, err := c.cs.CoreV1().Services(c.namespace).Get(ctx, name, metav1.GetOptions{})
+		if err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Client) ExecInPod(ctx context.Context, podName string, cmd []string) error {
 	// Use kubectl exec via os/exec for simplicity
 	args := append([]string{"exec", "-n", c.namespace, podName, "--"}, cmd...)
