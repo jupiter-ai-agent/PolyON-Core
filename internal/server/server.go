@@ -113,8 +113,9 @@ func New(cfg *config.Config) (*Server, error) {
 	// Ensure Strapi DB exists (non-blocking background call)
 	go store.EnsureStrapiDB(cfg.DatabaseURL)
 
-	// Auto-populate polyon_config with domain defaults if provisioned
-	if st != nil && cfg.IsProvisioned() && cfg.Realm != "" {
+	// Auto-populate polyon_config with domain defaults
+	// Trigger: POLYON_DOMAIN env is set (Operator always provides this via ConfigMap)
+	if st != nil && cfg.Realm != "" {
 		go func() {
 			ctx := context.Background()
 			realm := strings.ToLower(cfg.Realm)
