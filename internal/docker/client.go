@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -44,9 +45,12 @@ func (d *Client) SDK() *client.Client {
 }
 
 // ExecCommand runs an arbitrary command inside a container and returns stdout.
+// Falls back to kubectl exec if Docker client is not available (K8s environment).
 func (d *Client) ExecCommand(containerName string, args ...string) (string, error) {
 	if d == nil || d.cli == nil {
-		return "", fmt.Errorf("docker client not initialized")
+		// K8s fallback — map container name to label selector
+		label := "app=" + containerName
+		return KubectlExecInPod("polyon", label, args)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -125,9 +129,11 @@ func (d *Client) ExecWithStdin(containerName string, cmd []string, stdin []byte)
 }
 
 // ExecSambaTool runs samba-tool inside the DC container and returns stdout.
+// Falls back to kubectl exec if Docker client is not available (K8s environment).
 func (d *Client) ExecSambaTool(containerName string, args ...string) (string, error) {
 	if d == nil || d.cli == nil {
-		return "", fmt.Errorf("docker client not initialized")
+		// K8s fallback: use kubectl exec
+		return d.kubectlExecSambaTool(args...)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -503,6 +509,46 @@ func (d *Client) CopyFromContainer(containerName, srcPath string) ([]byte, error
 		return nil, fmt.Errorf("tar read: %w", err)
 	}
 	return data, nil
+}
+
+// kubectlExecSambaTool runs samba-tool via kubectl exec (K8s fallback).
+func (d *Client) kubectlExecSambaTool(args ...string) (string, error) {
+	cmd := append([]string{"samba-tool"}, args...)
+	return KubectlExecInPod("polyon", "app=polyon-dc", cmd)
+}
+
+// KubectlExecInPod runs a command in a K8s pod via kubectl exec.
+func KubectlExecInPod(namespace, labelSelector string, cmd []string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get pod name
+	getPod := osexec.CommandContext(ctx, "kubectl", "get", "pods",
+		"-n", namespace, "-l", labelSelector,
+		"-o", "jsonpath={.items[0].metadata.name}")
+	podNameBytes, err := getPod.Output()
+	if err != nil {
+		return "", fmt.Errorf("kubectl get pod (%s): %w", labelSelector, err)
+	}
+	podName := strings.TrimSpace(string(podNameBytes))
+	if podName == "" {
+		return "", fmt.Errorf("no pod found for selector %s", labelSelector)
+	}
+
+	execArgs := []string{"exec", podName, "-n", namespace, "--"}
+	execArgs = append(execArgs, cmd...)
+	execCmd := osexec.CommandContext(ctx, "kubectl", execArgs...)
+	var stdout, stderr bytes.Buffer
+	execCmd.Stdout = &stdout
+	execCmd.Stderr = &stderr
+	if err := execCmd.Run(); err != nil {
+		errMsg := stderr.String()
+		if errMsg == "" {
+			errMsg = stdout.String()
+		}
+		return "", fmt.Errorf("%s", strings.TrimSpace(errMsg))
+	}
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 // stripDockerHeaders removes Docker multiplexed stream header bytes.
