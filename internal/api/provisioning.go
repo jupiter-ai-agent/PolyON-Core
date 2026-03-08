@@ -62,11 +62,21 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 	// 엔진별 특별 처리
 	switch spec.Engine {
 	case "affine":
-		// AFFiNE uses OIDC — users are auto-provisioned on first login
-		// No LDAP sync needed
-		log.Info().Str("module_id", moduleID).Msg("AFFiNE uses OIDC, no LDAP sync needed")
-		d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
-			"OIDC 기반 — 사용자는 첫 로그인 시 자동 생성됩니다", nil)
+		log.Info().Str("module_id", moduleID).Msg("Starting Wiki LDAP sync with RustFS storage allocation")
+		result, err := WikiSyncLDAPUsers(d)
+		if err != nil {
+			log.Error().Err(err).Str("module_id", moduleID).Msg("Wiki LDAP sync failed")
+			d.Store.CreateModuleEvent(ctx, moduleID, "provision", "warning",
+				"Wiki LDAP sync failed: "+err.Error(), nil)
+		} else {
+			log.Info().
+				Int("created", result.BucketsCreated).
+				Int("skipped", result.Skipped).
+				Str("module_id", moduleID).
+				Msg("Wiki LDAP sync completed")
+			d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
+				fmt.Sprintf("RustFS 스토리지 할당: %d개 버킷 생성, %d개 스킵", result.BucketsCreated, result.Skipped), nil)
+		}
 	}
 }
 

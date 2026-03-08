@@ -12,6 +12,7 @@ func RegisterWiki(r chi.Router, d *Deps) {
 	r.Route("/engines/wiki", func(r chi.Router) {
 		r.Get("/status", wikiStatus(d))
 		r.Get("/info", wikiInfo(d))
+		r.Post("/ldap-sync", wikiLDAPSync(d))
 	})
 }
 
@@ -48,5 +49,16 @@ func wikiInfo(d *Deps) http.HandlerFunc {
 			"version": version,
 			"engine":  "affine",
 		})
+	}
+}
+
+func wikiLDAPSync(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		result, err := WikiSyncLDAPUsers(d)
+		if err != nil {
+			httputil.RespondError(w, 500, "SYNC_ERROR", err.Error())
+			return
+		}
+		httputil.RespondJSON(w, 200, result)
 	}
 }
