@@ -22,6 +22,7 @@ func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
 			// Skip auth for health checks and internal endpoints
 			if r.URL.Path == "/health" ||
 				r.URL.Path == "/api/v1/status" ||
+				r.URL.Path == "/api/v1/system/auth-config" ||
 				r.URL.Path == "/api/sentinel/state" ||
 				strings.HasPrefix(r.URL.Path, "/api/internal/") {
 				next.ServeHTTP(w, r)

@@ -37,6 +37,9 @@ func RegisterSystem(r chi.Router, d *Deps) {
 		r.Get("/prometheus/rules", prometheusRules(d))
 		r.Get("/prometheus/query", prometheusQuery(d))
 		r.Get("/prometheus/query_range", prometheusQueryRange(d))
+
+		// Public endpoint — Console이 Keycloak URL/realm/clientId를 런타임에 조회
+		r.Get("/auth-config", authConfig(d))
 	})
 }
 
@@ -332,5 +335,45 @@ func prometheusRules(d *Deps) http.HandlerFunc {
 			}
 			w.Write(buf[:n])
 		}
+	}
+}
+
+func authConfig(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Try DB first (polyon_config), then fall back to env vars
+		var authDomain string
+
+		if d.Store != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			configs, err := d.Store.GetConfigs(ctx, []string{"auth_domain"})
+			if err == nil {
+				authDomain = configs["auth_domain"]
+			}
+		}
+
+		// Fallback to env/config
+		if authDomain == "" {
+			authDomain = os.Getenv("POLYON_AUTH_DOMAIN")
+		}
+
+		// Derive from base domain if still empty
+		if authDomain == "" {
+			baseDomain := os.Getenv("POLYON_DOMAIN")
+			if baseDomain != "" {
+				authDomain = "auth." + baseDomain
+			}
+		}
+
+		keycloakURL := ""
+		if authDomain != "" {
+			keycloakURL = "https://" + authDomain
+		}
+
+		httputil.RespondOK(w, map[string]interface{}{
+			"keycloak_url": keycloakURL,
+			"realm":        "admin",
+			"client_id":    "polyon-console",
+		})
 	}
 }

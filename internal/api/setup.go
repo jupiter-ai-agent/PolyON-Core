@@ -310,6 +310,15 @@ func startSetup(d *Deps) http.HandlerFunc {
 				kvs["console_domain"] = "console." + kvs["service_base_domain"]
 			}
 
+			// auth_domain
+			if v, ok := req["auth_domain"].(string); ok && v != "" {
+				kvs["auth_domain"] = strings.ToLower(strings.TrimSpace(v))
+			} else if ad := os.Getenv("POLYON_AUTH_DOMAIN"); ad != "" {
+				kvs["auth_domain"] = ad
+			} else {
+				kvs["auth_domain"] = "auth." + kvs["service_base_domain"]
+			}
+
 			// mail_domain
 			if v, ok := req["mail_domain"].(string); ok && v != "" {
 				kvs["mail_domain"] = strings.ToLower(strings.TrimSpace(v))

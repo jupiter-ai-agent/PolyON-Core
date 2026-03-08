@@ -125,6 +125,12 @@ func New(cfg *config.Config) (*Server, error) {
 					"mail_domain":         "mail." + realm,
 					"service_base_domain": realm,
 				}
+				// auth_domain from env var
+				if ad := os.Getenv("POLYON_AUTH_DOMAIN"); ad != "" {
+					kvs["auth_domain"] = ad
+				} else {
+					kvs["auth_domain"] = "auth." + realm
+				}
 				// Only set console/portal if not already set
 				ex2, _ := st.GetConfigs(ctx, []string{"console_domain", "portal_domain"})
 				if ex2["console_domain"] == "" {
