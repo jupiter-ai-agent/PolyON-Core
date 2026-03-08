@@ -35,6 +35,18 @@ var seedInfraServices = []InfraService{
 		ID: "samba-dc", Name: "Samba AD DC", Host: "polyon-dc", Port: 389,
 		Protocol: "ldap", Category: "infra", Enabled: true,
 	},
+	{
+		ID: "keycloak", Name: "Keycloak SSO", Host: "polyon-auth", Port: 8080,
+		Protocol: "http", Category: "infra", Enabled: true,
+	},
+	{
+		ID: "opensearch", Name: "OpenSearch", Host: "polyon-search", Port: 9200,
+		Protocol: "http", Category: "infra", Enabled: true,
+	},
+	{
+		ID: "rustfs", Name: "RustFS S3", Host: "polyon-rustfs", Port: 9000,
+		Protocol: "http", Category: "infra", Enabled: true,
+	},
 	// ── infra (00-infra.yml services + :1111 management routers) ──
 	{
 		ID: "sentinel", Name: "Sentinel", Host: "polyon-sentinel", Port: 8080,
