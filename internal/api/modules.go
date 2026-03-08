@@ -225,6 +225,12 @@ func installModule(d *Deps) http.HandlerFunc {
 
 		id := chi.URLParam(r, "id")
 
+		// Parse optional request body for subdomain
+		var reqBody struct {
+			Subdomain string `json:"subdomain"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&reqBody) // optional body
+
 		// 1. 모듈 존재 확인 — 없으면 catalog에서 자동 등록 시도
 		moduleRecord, err := d.Store.GetModule(r.Context(), id)
 		if err != nil {
@@ -275,6 +281,11 @@ func installModule(d *Deps) http.HandlerFunc {
 			log.Error().Err(err).Str("module_id", id).Msg("Failed to parse module manifest")
 			httputil.RespondError(w, http.StatusInternalServerError, "INVALID_MANIFEST", "모듈 매니페스트 파싱 실패")
 			return
+		}
+
+		// 2.5 Subdomain override from request body
+		if reqBody.Subdomain != "" {
+			manifest.Spec.Ingress.Subdomain = reqBody.Subdomain
 		}
 
 		// 3. 의존성 체크 (기본 체크만, Foundation은 항상 존재)
@@ -374,6 +385,13 @@ func installModule(d *Deps) http.HandlerFunc {
 
 		if err := d.Store.SaveModuleNav(r.Context(), navInfo); err != nil {
 			log.Error().Err(err).Msg("installModule: failed to save nav info")
+		}
+
+		// 7.5 Update app subdomain in polyon_apps (for domain management page)
+		if manifest.Spec.Ingress.Subdomain != "" {
+			if err := d.Store.UpdateAppDomain(r.Context(), id, manifest.Spec.Ingress.Subdomain, "active"); err != nil {
+				log.Warn().Err(err).Str("module_id", id).Msg("Failed to update app subdomain (non-fatal)")
+			}
 		}
 
 		// 8. status → active

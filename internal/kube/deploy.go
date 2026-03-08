@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -590,8 +591,12 @@ func (c *Client) createModuleIngress(ctx context.Context, moduleID string, ingre
 	ingressName := fmt.Sprintf("polyon-%s", moduleID)
 	serviceName := fmt.Sprintf("polyon-%s", moduleID)
 	
-	// Build host name (hardcode cmars.com for now as per spec)
-	host := fmt.Sprintf("%s.cmars.com", ingressSpec.Subdomain)
+	// Build host name from base domain (env) or fallback
+	baseDomain := os.Getenv("POLYON_DOMAIN")
+	if baseDomain == "" {
+		baseDomain = "cmars.com"
+	}
+	host := fmt.Sprintf("%s.%s", ingressSpec.Subdomain, strings.ToLower(baseDomain))
 
 	// Default annotations for Traefik (based on existing polyon ingresses)
 	annotations := map[string]string{
