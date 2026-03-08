@@ -19,7 +19,9 @@ type AppMeta struct {
 	Containers []string `json:"containers"`
 	BaseStatus string   `json:"baseStatus"` // "available" | "coming-soon" | "active" | "requires-setup"
 	Details    string   `json:"details"`
-	BackendURL string   `json:"backendUrl"` // Internal backend URL for Traefik reverse proxy
+	BackendURL string   `json:"backendUrl"`    // Internal backend URL for Traefik reverse proxy
+	AccessMode string   `json:"accessMode"`    // "subdomain" | "url"
+	PathPrefix string   `json:"pathPrefix"`    // URL pattern path (e.g. "/chat")
 }
 
 // seedApps is the canonical app catalog seeded into the DB on first run.
@@ -104,7 +106,9 @@ func (s *Store) migrateApps() {
 func (s *Store) ListApps(ctx context.Context) ([]AppMeta, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, name, "desc", base, icon, category, subdomain, containers, base_status, details,
-		       COALESCE(backend_url, '') as backend_url
+		       COALESCE(backend_url, '') as backend_url,
+		       COALESCE(access_mode, 'subdomain') as access_mode,
+		       COALESCE(path_prefix, '') as path_prefix
 		FROM polyon_apps
 		ORDER BY category, name
 	`)
@@ -120,6 +124,7 @@ func (s *Store) ListApps(ctx context.Context) ([]AppMeta, error) {
 			&a.ID, &a.Name, &a.Desc, &a.Base, &a.Icon,
 			&a.Category, &a.Subdomain, &a.Containers,
 			&a.BaseStatus, &a.Details, &a.BackendURL,
+			&a.AccessMode, &a.PathPrefix,
 		); err != nil {
 			return nil, err
 		}
@@ -136,13 +141,16 @@ func (s *Store) GetApp(ctx context.Context, id string) (*AppMeta, error) {
 	var a AppMeta
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, name, "desc", base, icon, category, subdomain, containers, base_status, details,
-		       COALESCE(backend_url, '') as backend_url
+		       COALESCE(backend_url, '') as backend_url,
+		       COALESCE(access_mode, 'subdomain') as access_mode,
+		       COALESCE(path_prefix, '') as path_prefix
 		FROM polyon_apps
 		WHERE id = $1
 	`, id).Scan(
 		&a.ID, &a.Name, &a.Desc, &a.Base, &a.Icon,
 		&a.Category, &a.Subdomain, &a.Containers,
 		&a.BaseStatus, &a.Details, &a.BackendURL,
+		&a.AccessMode, &a.PathPrefix,
 	)
 	if err != nil {
 		return nil, err

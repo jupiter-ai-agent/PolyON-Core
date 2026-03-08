@@ -392,10 +392,23 @@ func installModule(d *Deps) http.HandlerFunc {
 			log.Error().Err(err).Msg("installModule: failed to save nav info")
 		}
 
-		// 7.5 Update app subdomain + base_status in polyon_apps
-		if manifest.Spec.Ingress.Subdomain != "" {
-			if err := d.Store.UpdateAppDomain(r.Context(), id, manifest.Spec.Ingress.Subdomain, "active"); err != nil {
-				log.Warn().Err(err).Str("module_id", id).Msg("Failed to update app subdomain (non-fatal)")
+		// 7.5 Update app domain info in polyon_apps
+		// module ID (mattermost) ≠ app ID (chat) → container name fallback
+		containerName := fmt.Sprintf("polyon-%s", id)
+		domainUpdateSQL := ""
+		var domainArgs []any
+		if manifest.Spec.Ingress.PathPrefix != "" {
+			// URL 패턴: portal.cmars.com/chat
+			domainUpdateSQL = `UPDATE polyon_apps SET subdomain = '', path_prefix = $1, access_mode = 'url', domain_status = 'active', updated_at = NOW() WHERE id = $2 OR $3 = ANY(containers)`
+			domainArgs = []any{manifest.Spec.Ingress.PathPrefix, id, containerName}
+		} else if manifest.Spec.Ingress.Subdomain != "" {
+			// 서브도메인: chat.cmars.com
+			domainUpdateSQL = `UPDATE polyon_apps SET subdomain = $1, path_prefix = '', access_mode = 'subdomain', domain_status = 'active', updated_at = NOW() WHERE id = $2 OR $3 = ANY(containers)`
+			domainArgs = []any{manifest.Spec.Ingress.Subdomain, id, containerName}
+		}
+		if domainUpdateSQL != "" {
+			if _, err := d.Store.Pool().Exec(r.Context(), domainUpdateSQL, domainArgs...); err != nil {
+				log.Warn().Err(err).Str("module_id", id).Msg("Failed to update app domain info (non-fatal)")
 			}
 		}
 		// Mark app as active in polyon_apps (for domain/portal pages)

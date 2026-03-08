@@ -215,8 +215,10 @@ func (s *Store) migrate() {
 			value      TEXT NOT NULL,
 			updated_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
-		// Migration: add domain_status to polyon_apps
+		// Migration: add domain_status, access_mode, path_prefix to polyon_apps
 		`ALTER TABLE polyon_apps ADD COLUMN IF NOT EXISTS domain_status TEXT DEFAULT 'unconfigured'`,
+		`ALTER TABLE polyon_apps ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'subdomain'`,
+		`ALTER TABLE polyon_apps ADD COLUMN IF NOT EXISTS path_prefix TEXT NOT NULL DEFAULT ''`,
 		// Workstream Events — Git commit/PR events linked to Workstream IDs
 		`CREATE TABLE IF NOT EXISTS workstream_events (
 			id SERIAL PRIMARY KEY,
