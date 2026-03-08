@@ -39,6 +39,27 @@ spec:
         value: "3010"
       - name: NODE_ENV
         value: "production"
+      # RustFS object storage
+      - name: AFFINE_STORAGE_PROVIDER
+        value: "s3"
+      - name: AFFINE_STORAGE_S3_ENDPOINT
+        value: "http://polyon-rustfs:9000"
+      - name: AFFINE_STORAGE_S3_BUCKET
+        value: "polyon-wiki"
+      - name: AFFINE_STORAGE_S3_REGION
+        value: "us-east-1"
+      - name: AFFINE_STORAGE_S3_FORCE_PATH_STYLE
+        value: "true"
+      - name: AFFINE_STORAGE_S3_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: polyon-rustfs-secret
+            key: RUSTFS_ACCESS_KEY
+      - name: AFFINE_STORAGE_S3_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: polyon-rustfs-secret
+            key: RUSTFS_SECRET_KEY
     health:
       path: /info
       port: 3010
