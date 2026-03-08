@@ -387,11 +387,16 @@ func installModule(d *Deps) http.HandlerFunc {
 			log.Error().Err(err).Msg("installModule: failed to save nav info")
 		}
 
-		// 7.5 Update app subdomain in polyon_apps (for domain management page)
+		// 7.5 Update app subdomain + base_status in polyon_apps
 		if manifest.Spec.Ingress.Subdomain != "" {
 			if err := d.Store.UpdateAppDomain(r.Context(), id, manifest.Spec.Ingress.Subdomain, "active"); err != nil {
 				log.Warn().Err(err).Str("module_id", id).Msg("Failed to update app subdomain (non-fatal)")
 			}
+		}
+		// Mark app as active in polyon_apps (for domain/portal pages)
+		if _, err := d.Store.Pool().Exec(r.Context(),
+			`UPDATE polyon_apps SET base_status = 'active', updated_at = NOW() WHERE id = $1`, id); err != nil {
+			log.Warn().Err(err).Str("module_id", id).Msg("Failed to update app base_status (non-fatal)")
 		}
 
 		// 8. status → active
@@ -522,6 +527,12 @@ func uninstallModule(d *Deps) http.HandlerFunc {
 		// 3. nav 정보 삭제 (CASCADE로 자동 삭제되지만 명시적 호출)
 		if err := d.Store.DeleteModuleNav(r.Context(), id); err != nil {
 			log.Error().Err(err).Msg("uninstallModule: failed to delete nav")
+		}
+
+		// 3.5 Revert app base_status to available
+		if _, err := d.Store.Pool().Exec(r.Context(),
+			`UPDATE polyon_apps SET base_status = 'available', updated_at = NOW() WHERE id = $1`, id); err != nil {
+			log.Warn().Err(err).Msg("uninstallModule: failed to revert app base_status")
 		}
 
 		// 4. module 레코드 삭제
