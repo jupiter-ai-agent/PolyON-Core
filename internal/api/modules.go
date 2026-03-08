@@ -225,9 +225,10 @@ func installModule(d *Deps) http.HandlerFunc {
 
 		id := chi.URLParam(r, "id")
 
-		// Parse optional request body for subdomain
+		// Parse optional request body for access mode
 		var reqBody struct {
-			Subdomain string `json:"subdomain"`
+			Subdomain  string `json:"subdomain"`
+			PathPrefix string `json:"path_prefix"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&reqBody) // optional body
 
@@ -283,9 +284,13 @@ func installModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// 2.5 Subdomain override from request body
+		// 2.5 Access mode: subdomain or URL pattern (path prefix)
 		if reqBody.Subdomain != "" {
 			manifest.Spec.Ingress.Subdomain = reqBody.Subdomain
+			manifest.Spec.Ingress.PathPrefix = ""
+		} else if reqBody.PathPrefix != "" {
+			manifest.Spec.Ingress.PathPrefix = reqBody.PathPrefix
+			manifest.Spec.Ingress.Subdomain = ""
 		}
 
 		// 3. 의존성 체크 (기본 체크만, Foundation은 항상 존재)

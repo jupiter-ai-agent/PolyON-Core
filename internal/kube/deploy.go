@@ -55,8 +55,8 @@ func (c *Client) DeployModule(ctx context.Context, moduleID string, spec module.
 		}
 	}
 
-	// 5. Create Ingress if configured
-	if spec.Ingress.Subdomain != "" {
+	// 5. Create Ingress if configured (subdomain or path prefix)
+	if spec.Ingress.Subdomain != "" || spec.Ingress.PathPrefix != "" {
 		if err := c.createModuleIngress(ctx, moduleID, spec.Ingress); err != nil {
 			return fmt.Errorf("failed to create ingress: %w", err)
 		}
@@ -591,12 +591,29 @@ func (c *Client) createModuleIngress(ctx context.Context, moduleID string, ingre
 	ingressName := fmt.Sprintf("polyon-%s", moduleID)
 	serviceName := fmt.Sprintf("polyon-%s", moduleID)
 	
-	// Build host name from base domain (env) or fallback
 	baseDomain := os.Getenv("POLYON_DOMAIN")
 	if baseDomain == "" {
 		baseDomain = "cmars.com"
 	}
-	host := fmt.Sprintf("%s.%s", ingressSpec.Subdomain, strings.ToLower(baseDomain))
+	baseDomain = strings.ToLower(baseDomain)
+
+	// Determine host and path based on access mode
+	var host, path string
+	if ingressSpec.Subdomain != "" {
+		// 서브도메인 방식: chat.cmars.com
+		host = fmt.Sprintf("%s.%s", ingressSpec.Subdomain, baseDomain)
+		path = "/"
+	} else if ingressSpec.PathPrefix != "" {
+		// URL 패턴 방식: portal.cmars.com/chat
+		portalDomain := os.Getenv("POLYON_PORTAL_DOMAIN")
+		if portalDomain == "" {
+			portalDomain = fmt.Sprintf("portal.%s", baseDomain)
+		}
+		host = portalDomain
+		path = ingressSpec.PathPrefix
+	} else {
+		return nil // no ingress needed
+	}
 
 	// Default annotations for Traefik (based on existing polyon ingresses)
 	annotations := map[string]string{
@@ -634,7 +651,7 @@ func (c *Client) createModuleIngress(ctx context.Context, moduleID string, ingre
 						HTTP: &networkingv1.HTTPIngressRuleValue{
 							Paths: []networkingv1.HTTPIngressPath{
 								{
-									Path:     "/",
+									Path:     path,
 									PathType: &pathType,
 									Backend: networkingv1.IngressBackend{
 										Service: &networkingv1.IngressServiceBackend{

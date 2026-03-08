@@ -145,6 +145,7 @@ type PVCSpec struct {
 // IngressSpec defines ingress configuration.
 type IngressSpec struct {
 	Subdomain   string            `yaml:"subdomain" json:"subdomain"`
+	PathPrefix  string            `yaml:"pathPrefix,omitempty" json:"path_prefix,omitempty"`
 	Port        int               `yaml:"port" json:"port"`
 	Annotations map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
 }
