@@ -58,6 +58,16 @@ func PostInstallProvisioning(ctx context.Context, d *Deps, moduleID string, mani
 			log.Warn().Str("engine", spec.LDAP.Engine).Msg("Unknown LDAP engine, skipping")
 		}
 	}
+
+	// 엔진별 특별 처리
+	switch spec.Engine {
+	case "affine":
+		// AFFiNE uses OIDC — users are auto-provisioned on first login
+		// No LDAP sync needed
+		log.Info().Str("module_id", moduleID).Msg("AFFiNE uses OIDC, no LDAP sync needed")
+		d.Store.CreateModuleEvent(ctx, moduleID, "provision", "completed",
+			"OIDC 기반 — 사용자는 첫 로그인 시 자동 생성됩니다", nil)
+	}
 }
 
 // getDirectoryInfo builds DirectoryConnectInfo from Config.

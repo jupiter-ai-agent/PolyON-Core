@@ -343,6 +343,7 @@ func (s *Server) buildRouter() {
 		api.RegisterAutomation(r, deps)
 		api.RegisterAI(r, deps)
 		api.RegisterDrive(r, deps)
+		api.RegisterWiki(r, deps)
 		api.RegisterProvision(r, deps)
 		api.RegisterInfraServices(r, deps)
 		api.RegisterComponents(r, deps)

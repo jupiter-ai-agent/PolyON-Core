@@ -1,0 +1,114 @@
+apiVersion: polyon.io/v1
+kind: Module
+metadata:
+  id: affine
+  name: PolyON Wiki
+  version: 1.0.0
+  category: engine
+  icon: Notebook
+  accent: "#1E96EB"
+  description: "지식 관리 · 위키 · 문서 협업"
+  vendor: Triangle.s
+  license: MIT
+spec:
+  engine: affine
+  requires:
+    - id: postgresql
+      reason: "위키 데이터 저장"
+    - id: keycloak
+      reason: "SSO 인증 연동"
+  optional:
+    - id: opensearch
+      feature: "문서 전문검색"
+  resources:
+    statefulset: false
+    image: ghcr.io/toeverything/affine-graphql:stable
+    replicas: 1
+    ports:
+      - name: http
+        containerPort: 3010
+    env:
+      - name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: polyon-module-affine
+            key: DATABASE_URL
+      - name: AFFINE_SERVER_HOST
+        value: "0.0.0.0"
+      - name: AFFINE_SERVER_PORT
+        value: "3010"
+      - name: NODE_ENV
+        value: "production"
+    health:
+      path: /info
+      port: 3010
+      initialDelay: 30
+      period: 15
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 1Gi }
+    pvc:
+      - name: data
+        size: 10Gi
+        mountPath: /root/.affine
+    configMaps: []
+  ingress:
+    subdomain: wiki
+    port: 3010
+  database:
+    create: true
+    name: affine
+    user: affine
+    migrations: auto
+  ldap:
+    bind: false
+  oidc:
+    create: true
+    realm: helios
+    clientId: affine
+    publicClient: false
+    redirectUris:
+      - "https://wiki.cmars.com/*"
+    webOrigins:
+      - "https://wiki.cmars.com"
+  admin:
+    nav:
+      title: Wiki
+      section: SERVICES
+      icon: Notebook
+      defaultPath: /wiki
+      sortOrder: 40
+      items:
+        - label: 개요
+          path: /wiki
+          icon: Notebook
+        - type: divider
+        - label: 워크스페이스
+          path: /wiki/workspaces
+          icon: Workspace
+        - label: 사용자
+          path: /wiki/users
+          icon: User
+        - type: divider
+        - label: 설정
+          path: /wiki/settings
+          icon: Settings
+    ui:
+      entry: entry.js
+      pages:
+        - path: /wiki
+          component: WikiPage
+        - path: /wiki/workspaces
+          component: WikiWorkspacesPage
+        - path: /wiki/users
+          component: WikiUsersPage
+        - path: /wiki/settings
+          component: WikiSettingsPage
+  uninstall:
+    confirm: true
+    dataPolicy: ask
+    resources:
+      databases: [affine]
+      pvcs: [polyon-affine-data]
+      oidcClients: [affine]
+      secrets: [polyon-module-affine]
