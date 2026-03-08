@@ -42,7 +42,9 @@ func listModuleCatalog(d *Deps) http.HandlerFunc {
 		category := r.URL.Query().Get("category")
 		status := r.URL.Query().Get("status")
 
-		modules, err := d.Store.ListModules(r.Context(), category, status)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		modules, err := d.Store.ListModules(ctx, category, status)
 		if err != nil {
 			log.Error().Err(err).Msg("listModuleCatalog: DB query failed")
 			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "모듈 목록 조회 실패")
@@ -63,7 +65,9 @@ func listModuleNav(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		navs, err := d.Store.ListActiveModuleNav(r.Context())
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		navs, err := d.Store.ListActiveModuleNav(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("listModuleNav: DB query failed")
 			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "모듈 네비게이션 조회 실패")
