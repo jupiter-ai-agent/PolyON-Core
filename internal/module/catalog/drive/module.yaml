@@ -23,6 +23,8 @@ spec:
       reason: "파일 메타데이터 저장"
     - id: keycloak
       reason: "SSO 인증 연동"
+    - id: rustfs
+      reason: "오브젝트 스토리지 (S3)"
 
   optional:
     - id: opensearch
@@ -61,7 +63,29 @@ spec:
             name: polyon-module-nextcloud
             key: ADMIN_PASSWORD
       - name: NEXTCLOUD_TRUSTED_DOMAINS
-        value: "drive.cmars.com"
+        value: "*"
+      - name: OBJECTSTORE_S3_HOST
+        value: polyon-rustfs
+      - name: OBJECTSTORE_S3_PORT
+        value: "9000"
+      - name: OBJECTSTORE_S3_BUCKET
+        value: nextcloud
+      - name: OBJECTSTORE_S3_KEY
+        valueFrom:
+          secretKeyRef:
+            name: polyon-common-secret
+            key: RUSTFS_ROOT_USER
+      - name: OBJECTSTORE_S3_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: polyon-common-secret
+            key: RUSTFS_ROOT_PASSWORD
+      - name: OBJECTSTORE_S3_SSL
+        value: "false"
+      - name: OBJECTSTORE_S3_USEPATH_STYLE
+        value: "true"
+      - name: OBJECTSTORE_S3_AUTOCREATE
+        value: "true"
 
     health:
       path: /status.php
@@ -75,7 +99,7 @@ spec:
 
     pvc:
       - name: data
-        size: 50Gi
+        size: 5Gi
         mountPath: /var/www/html
 
     configMaps: []

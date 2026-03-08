@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"os/exec"
@@ -210,10 +211,21 @@ func (c *Client) createModuleSecret(ctx context.Context, moduleID string, spec m
 		data["DB_PASSWORD"] = []byte(dbPassword)
 	}
 
-	// Add custom environment variables from spec
+	// Auto-generate values for secretKeyRef references
 	for _, env := range spec.Resources.Env {
-		if env.Value != "" && !strings.Contains(env.Name, "SECRET") {
-			// Only add non-secret values directly, secrets will be handled separately
+		if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+			ref := env.ValueFrom.SecretKeyRef
+			// Only generate for our own module secret
+			if ref.Name == secretName {
+				if _, exists := data[ref.Key]; !exists {
+					// Generate random password for missing secret keys
+					randBytes := make([]byte, 24)
+					rand.Read(randBytes)
+					data[ref.Key] = []byte(fmt.Sprintf("%x", randBytes)[:24])
+					log.Info().Str("key", ref.Key).Msg("Auto-generated secret key value")
+				}
+			}
+		} else if env.Value != "" {
 			data[env.Name] = []byte(env.Value)
 		}
 	}

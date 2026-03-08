@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/rs/zerolog/log"
 	"github.com/triangles/polyon-core/internal/httputil"
 	"github.com/triangles/polyon-core/internal/module"
@@ -355,6 +358,18 @@ func installModule(d *Deps) http.HandlerFunc {
 			}()
 		}
 
+		// 4.5 RustFS 버킷 생성 (S3 오브젝트 스토리지 필요 시)
+		for _, env := range manifest.Spec.Resources.Env {
+			if env.Name == "OBJECTSTORE_S3_BUCKET" && env.Value != "" {
+				bucketName := env.Value
+				if err := ensureRustFSBucket(d, bucketName); err != nil {
+					log.Warn().Err(err).Str("bucket", bucketName).Msg("RustFS bucket creation failed (non-fatal)")
+				} else {
+					log.Info().Str("bucket", bucketName).Msg("RustFS bucket ensured")
+				}
+			}
+		}
+
 		// 5-6. K8s Secret + Deployment + Service + Ingress 생성
 		if err := d.Kube.DeployModule(r.Context(), id, manifest.Spec); err != nil {
 			log.Error().Err(err).Str("module_id", id).Msg("K8s deployment failed")
@@ -656,4 +671,45 @@ func extractImageName(image string) string {
 	
 	name := strings.Split(image, ":")[0]
 	return strings.Title(strings.ReplaceAll(name, "-", " "))
+}
+
+// ensureRustFSBucket creates a RustFS/S3 bucket if it doesn't exist.
+func ensureRustFSBucket(d *Deps, bucketName string) error {
+	endpoint := os.Getenv("RUSTFS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "polyon-rustfs:9000"
+	}
+	accessKey := os.Getenv("RUSTFS_ACCESS_KEY")
+	if accessKey == "" {
+		accessKey = os.Getenv("POLYON_RUSTFS_ACCESS_KEY")
+	}
+	secretKey := os.Getenv("RUSTFS_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = os.Getenv("POLYON_RUSTFS_SECRET_KEY")
+	}
+	if accessKey == "" || secretKey == "" {
+		return fmt.Errorf("RustFS credentials not configured")
+	}
+
+	client, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure: false,
+	})
+	if err != nil {
+		return fmt.Errorf("RustFS client init: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	exists, err := client.BucketExists(ctx, bucketName)
+	if err != nil {
+		return fmt.Errorf("RustFS bucket check: %w", err)
+	}
+	if !exists {
+		if err := client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{}); err != nil {
+			return fmt.Errorf("RustFS bucket create: %w", err)
+		}
+	}
+	return nil
 }
