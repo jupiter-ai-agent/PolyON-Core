@@ -31,7 +31,7 @@ type Module struct {
 
 // ModuleNav represents navigation information for a module.
 type ModuleNav struct {
-	ModuleID    string          `json:"moduleId" db:"module_id"`
+	ModuleID    string          `json:"id" db:"module_id"`
 	Title       string          `json:"title" db:"title"`
 	Section     string          `json:"section" db:"section"`
 	Icon        string          `json:"icon" db:"icon"`
