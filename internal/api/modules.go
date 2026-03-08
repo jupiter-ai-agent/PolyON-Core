@@ -394,9 +394,16 @@ func installModule(d *Deps) http.HandlerFunc {
 			}
 		}
 		// Mark app as active in polyon_apps (for domain/portal pages)
-		if _, err := d.Store.Pool().Exec(r.Context(),
-			`UPDATE polyon_apps SET base_status = 'active', updated_at = NOW() WHERE id = $1`, id); err != nil {
-			log.Warn().Err(err).Str("module_id", id).Msg("Failed to update app base_status (non-fatal)")
+		// Try module ID, then check polyon_apps by matching container name pattern
+		res, _ := d.Store.Pool().Exec(r.Context(),
+			`UPDATE polyon_apps SET base_status = 'active', updated_at = NOW() WHERE id = $1`, id)
+		if res.RowsAffected() == 0 {
+			// Fallback: find app by container name containing module ID
+			d.Store.Pool().Exec(r.Context(),
+				`UPDATE polyon_apps SET base_status = 'active', updated_at = NOW()
+				 WHERE $1 = ANY(containers) OR id IN (
+					SELECT id FROM polyon_apps WHERE 'polyon-' || $2 = ANY(containers)
+				 )`, fmt.Sprintf("polyon-%s", id), id)
 		}
 
 		// 8. status → active
