@@ -28,10 +28,16 @@ type Client struct {
 func New() (*Client, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		// In K8s environment, Docker socket may not be available
-		// Return nil client instead of failing - let callers handle gracefully
 		log.Warn().Err(err).Msg("Docker client init failed (expected in K8s environment)")
-		return nil, nil // Return nil client, not error
+		return nil, nil
+	}
+	// Ping to verify Docker is actually reachable
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := cli.Ping(ctx); err != nil {
+		log.Info().Msg("Docker not reachable — using kubectl exec fallback (K8s environment)")
+		cli.Close()
+		return nil, nil
 	}
 	return &Client{cli: cli}, nil
 }
