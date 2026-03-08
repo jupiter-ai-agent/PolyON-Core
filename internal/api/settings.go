@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -42,7 +44,9 @@ func getDomainSettings(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		configs, err := d.Store.GetConfigs(r.Context(), domainConfigKeys)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		configs, err := d.Store.GetConfigs(ctx, domainConfigKeys)
 		if err != nil {
 			log.Error().Err(err).Msg("getDomainSettings: DB query failed")
 			httputil.RespondError(w, 500, "DB_ERROR", "도메인 설정 조회 실패: "+err.Error())
