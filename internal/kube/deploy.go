@@ -150,35 +150,47 @@ func (c *Client) DeleteModule(ctx context.Context, moduleID string) error {
 	return nil
 }
 
-// WaitForDeploymentReady waits for a deployment to be ready.
+// WaitForDeploymentReady waits for a Deployment or StatefulSet to be ready.
 func (c *Client) WaitForDeploymentReady(ctx context.Context, moduleID string, timeout time.Duration) error {
 	if c == nil || c.cs == nil {
 		return fmt.Errorf("k8s client not initialized")
 	}
 
-	deploymentName := fmt.Sprintf("polyon-%s", moduleID)
+	name := fmt.Sprintf("polyon-%s", moduleID)
 	
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	log.Info().Str("module_id", moduleID).Dur("timeout", timeout).Msg("Waiting for deployment readiness")
+	log.Info().Str("module_id", moduleID).Dur("timeout", timeout).Msg("Waiting for workload readiness")
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for deployment %s to be ready", deploymentName)
+			return fmt.Errorf("timeout waiting for %s to be ready", name)
 		default:
-			deployment, err := c.cs.AppsV1().Deployments(c.namespace).Get(ctx, deploymentName, metav1.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get deployment status: %w", err)
+			// Try Deployment first
+			deployment, err := c.cs.AppsV1().Deployments(c.namespace).Get(ctx, name, metav1.GetOptions{})
+			if err == nil {
+				if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
+					log.Info().Str("module_id", moduleID).Msg("Deployment is ready")
+					return nil
+				}
+				time.Sleep(2 * time.Second)
+				continue
 			}
 
-			if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
-				log.Info().Str("module_id", moduleID).Msg("Deployment is ready")
-				return nil
+			// Try StatefulSet
+			sts, stsErr := c.cs.AppsV1().StatefulSets(c.namespace).Get(ctx, name, metav1.GetOptions{})
+			if stsErr == nil {
+				if sts.Status.ReadyReplicas == *sts.Spec.Replicas {
+					log.Info().Str("module_id", moduleID).Msg("StatefulSet is ready")
+					return nil
+				}
+				time.Sleep(2 * time.Second)
+				continue
 			}
 
-			time.Sleep(2 * time.Second)
+			return fmt.Errorf("no Deployment or StatefulSet found for %s", name)
 		}
 	}
 }
