@@ -18,13 +18,18 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/triangles/polyon-core/i
 # Stage 2: Runtime
 FROM alpine:3.21
 
-# docker CLI + compose plugin + samba-client for AD/DC ops
+# kubectl + samba-client for AD/DC ops (K8s environment)
 RUN apk add --no-cache \
     ca-certificates \
-    docker-cli \
-    docker-cli-compose \
+    curl \
     openssl \
-    samba-client
+    samba-client \
+ && ARCH=$(uname -m) \
+ && case "$ARCH" in aarch64) KARCH=arm64;; x86_64) KARCH=amd64;; *) KARCH=amd64;; esac \
+ && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${KARCH}/kubectl" \
+    -o /usr/local/bin/kubectl \
+ && chmod +x /usr/local/bin/kubectl \
+ && apk del curl
 
 # Binaries
 COPY --from=builder /polyon-core  /app/polyon-core
