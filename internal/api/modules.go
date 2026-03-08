@@ -296,9 +296,13 @@ func installModule(d *Deps) http.HandlerFunc {
 			manifest.Spec.Ingress.Subdomain = ""
 		}
 
-		// 3. 의존성 체크 (기본 체크만, Foundation은 항상 존재)
+		// 3. 의존성 체크 (Foundation 인프라는 항상 존재로 간주)
+		foundationIDs := map[string]bool{
+			"postgresql": true, "keycloak": true, "opensearch": true,
+			"rustfs": true, "redis": true, "traefik": true, "samba-dc": true,
+		}
 		for _, dep := range manifest.Spec.Requires {
-			if dep.ID != "postgresql" && dep.ID != "keycloak" && dep.ID != "opensearch" {
+			if !foundationIDs[dep.ID] {
 				// Check if required module is active
 				depModule, err := d.Store.GetModule(r.Context(), dep.ID)
 				if err != nil || depModule.Status != "active" {
