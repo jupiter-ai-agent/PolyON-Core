@@ -213,6 +213,7 @@ func buildProviders(pool *pgxpool.Pool) []ResourceProvider {
 			AdminUser:     envOr("KC_ADMIN_USER", "admin"),
 			AdminPassword: envOrMulti([]string{"KC_ADMIN_PASSWORD", "POLYON_KC_ADMIN_PASSWORD"}, ""),
 			BaseDomain:    envOrMulti([]string{"BASE_DOMAIN", "POLYON_DOMAIN"}, ""),
+			AuthDomain:    envOr("POLYON_AUTH_DOMAIN", ""),
 		},
 	}
 

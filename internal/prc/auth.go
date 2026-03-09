@@ -22,6 +22,7 @@ type AuthProvider struct {
 	AdminUser     string // Keycloak admin username
 	AdminPassword string // Keycloak admin password
 	BaseDomain    string // e.g., "cmars.com"
+	AuthDomain    string // e.g., "sso.cmars.com" (Keycloak 외부 도메인)
 }
 
 func (p *AuthProvider) Type() string        { return "auth" }
@@ -50,7 +51,11 @@ func (p *AuthProvider) Provision(ctx context.Context, claim Claim) (Credentials,
 	}
 
 	// 4. Credential 반환
-	issuer := fmt.Sprintf("https://auth.%s/realms/%s", p.BaseDomain, p.Realm)
+	authHost := p.AuthDomain
+	if authHost == "" {
+		authHost = "auth." + p.BaseDomain
+	}
+	issuer := fmt.Sprintf("https://%s/realms/%s", authHost, p.Realm)
 	oidcBase := issuer + "/protocol/openid-connect"
 
 	creds := Credentials{
