@@ -47,8 +47,18 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 			return nil, fmt.Errorf("create database %s: %w", dbName, err)
 		}
 	}
-	// Grant full access to module user (PG 17: OWNER TO requires SET ROLE, so use GRANT instead)
+	// Grant full access to module user (PG 17 compatible)
 	p.Pool.Exec(ctx, fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO %s", dbName, user))
+
+	// PG 15+: public schema requires explicit GRANT
+	grantPool, gErr := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		"polyon", "", p.Host, p.Port, dbName))
+	if gErr == nil {
+		defer grantPool.Close()
+		grantPool.Exec(ctx, fmt.Sprintf("GRANT ALL ON SCHEMA public TO %s", user))
+		grantPool.Exec(ctx, fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %s", user))
+		grantPool.Exec(ctx, fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %s", user))
+	}
 
 	// 3. Extensions
 	if exts := claim.ConfigString("extensions", ""); exts != "" {
