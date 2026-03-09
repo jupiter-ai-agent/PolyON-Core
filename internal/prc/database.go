@@ -27,7 +27,7 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 	user := "mod_" + name
 	password := generatePassword(24)
 
-	// 1. CREATE ROLE (idempotent)
+	// 1. CREATE ROLE (idempotent) + GRANT to current user (PG 16+ SET ROLE requirement)
 	_, err := p.Pool.Exec(ctx, fmt.Sprintf(
 		`DO $$ BEGIN
 			IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='%s') THEN
@@ -37,6 +37,8 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 	if err != nil {
 		return nil, fmt.Errorf("create role %s: %w", user, err)
 	}
+	// PG 16+ requires ADMIN grant before SET ROLE (used internally by CREATE DATABASE ... OWNER)
+	p.Pool.Exec(ctx, fmt.Sprintf("GRANT %s TO CURRENT_USER WITH ADMIN OPTION", user))
 
 	// 2. CREATE DATABASE (idempotent check)
 	var exists bool
