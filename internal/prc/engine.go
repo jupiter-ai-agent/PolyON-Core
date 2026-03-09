@@ -167,8 +167,8 @@ func buildProviders(pool *pgxpool.Pool) []ResourceProvider {
 		// 2. Object Storage (RustFS)
 		&ObjectStorageProvider{
 			Endpoint:  envOr("RUSTFS_ENDPOINT", "polyon-rustfs:9000"),
-			AccessKey: envOr("RUSTFS_ACCESS_KEY", ""),
-			SecretKey: envOr("RUSTFS_SECRET_KEY", ""),
+			AccessKey: envOrMulti([]string{"RUSTFS_ACCESS_KEY", "RUSTFS_ROOT_USER"}, ""),
+			SecretKey: envOrMulti([]string{"RUSTFS_SECRET_KEY", "RUSTFS_ROOT_PASSWORD"}, ""),
 		},
 		// 3. Directory (Samba AD DC)
 		&DirectoryProvider{
@@ -253,6 +253,16 @@ func (e *Engine) GetClaimsForModule(ctx context.Context, moduleID string) ([]map
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+// envOrMulti tries multiple env var names, returning the first non-empty value.
+func envOrMulti(keys []string, fallback string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
 	}
 	return fallback
 }
