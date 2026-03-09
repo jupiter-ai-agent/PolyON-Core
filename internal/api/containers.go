@@ -99,7 +99,7 @@ func containerTopology(d *Deps) http.HandlerFunc {
 		"polyon-traefik":        {"core", "Traefik", nil},
 		"polyon-auth":           {"core", "Keycloak", nil},
 		"polyon-core":           {"core", "HELIOS Core", []string{"polyon-auth"}},
-		"polyon-console":             {"core", "PolyON UI", []string{"polyon-core", "polyon-traefik"}},
+		"polyon-console":             {"foundation", "PolyON Console", []string{"polyon-core", "polyon-traefik"}},
 		"polyon-db":             {"data", "PostgreSQL", nil},
 		"polyon-redis":          {"data", "Redis", nil},
 		"polyon-search":             {"data", "Elasticsearch", nil},
