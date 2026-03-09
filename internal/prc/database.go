@@ -27,13 +27,15 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 	user := "mod_" + name
 	password := generatePassword(24)
 
-	// 1. CREATE ROLE (idempotent)
+	// 1. CREATE ROLE (idempotent) + always sync password
 	_, err := p.Pool.Exec(ctx, fmt.Sprintf(
 		`DO $$ BEGIN
 			IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='%s') THEN
 				CREATE ROLE %s LOGIN PASSWORD '%s';
+			ELSE
+				ALTER ROLE %s PASSWORD '%s';
 			END IF;
-		END $$`, user, user, password))
+		END $$`, user, user, password, user, password))
 	if err != nil {
 		return nil, fmt.Errorf("create role %s: %w", user, err)
 	}
