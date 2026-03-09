@@ -21,15 +21,16 @@ import (
 )
 
 // DeployModule creates K8s resources based on module.yaml spec.
-func (c *Client) DeployModule(ctx context.Context, moduleID string, spec module.Spec) error {
+// prcEnv contains resolved PRC credentials (env key → value). May be nil.
+func (c *Client) DeployModule(ctx context.Context, moduleID string, spec module.Spec, prcEnv map[string]string) error {
 	if c == nil || c.cs == nil {
 		return fmt.Errorf("k8s client not initialized")
 	}
 
 	log.Info().Str("module_id", moduleID).Msg("Starting K8s deployment")
 
-	// 1. Create Secret (DB connection + custom secrets)
-	if err := c.createModuleSecret(ctx, moduleID, spec); err != nil {
+	// 1. Create Secret (PRC credentials + custom secrets)
+	if err := c.createModuleSecret(ctx, moduleID, spec, prcEnv); err != nil {
 		return fmt.Errorf("failed to create secret: %w", err)
 	}
 
@@ -196,25 +197,29 @@ func (c *Client) WaitForDeploymentReady(ctx context.Context, moduleID string, ti
 }
 
 // createModuleSecret creates a K8s Secret for the module.
-func (c *Client) createModuleSecret(ctx context.Context, moduleID string, spec module.Spec) error {
+// prcEnv contains resolved PRC environment variables (may be nil for legacy modules).
+func (c *Client) createModuleSecret(ctx context.Context, moduleID string, spec module.Spec, prcEnv map[string]string) error {
 	secretName := fmt.Sprintf("polyon-module-%s", moduleID)
 
 	data := make(map[string][]byte)
 
-	// Add database connection if configured
-	if spec.Database.Create {
-		dbHost := "polyon-db" // PostgreSQL service name in the cluster
+	// PRC path: inject resolved credentials
+	if len(prcEnv) > 0 {
+		for k, v := range prcEnv {
+			data[k] = []byte(v)
+		}
+		log.Info().Str("module_id", moduleID).Int("keys", len(prcEnv)).Msg("PRC credentials injected into secret")
+	}
+
+	// Legacy path: database connection from spec.database
+	if len(prcEnv) == 0 && spec.Database.Create {
+		dbHost := "polyon-db"
 		dbPort := "5432"
 		dbName := spec.Database.Name
 		dbUser := spec.Database.User
-		
-		// TODO: Get actual password from database provisioning
-		// For now, we'll set a placeholder that will be updated after DB creation
 		dbPassword := "placeholder_will_be_updated"
-		
-		dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", 
+		dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 			dbUser, dbPassword, dbHost, dbPort, dbName)
-		
 		data["DATABASE_URL"] = []byte(dbURL)
 		data["DB_HOST"] = []byte(dbHost)
 		data["DB_PORT"] = []byte(dbPort)
@@ -227,10 +232,8 @@ func (c *Client) createModuleSecret(ctx context.Context, moduleID string, spec m
 	for _, env := range spec.Resources.Env {
 		if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 			ref := env.ValueFrom.SecretKeyRef
-			// Only generate for our own module secret
 			if ref.Name == secretName {
 				if _, exists := data[ref.Key]; !exists {
-					// Generate random password for missing secret keys
 					randBytes := make([]byte, 24)
 					rand.Read(randBytes)
 					data[ref.Key] = []byte(fmt.Sprintf("%x", randBytes)[:24])
@@ -238,7 +241,10 @@ func (c *Client) createModuleSecret(ctx context.Context, moduleID string, spec m
 				}
 			}
 		} else if env.Value != "" {
-			data[env.Name] = []byte(env.Value)
+			// Only add static env if not already set by PRC
+			if _, exists := data[env.Name]; !exists {
+				data[env.Name] = []byte(env.Value)
+			}
 		}
 	}
 
@@ -580,6 +586,16 @@ func (c *Client) buildPodTemplate(moduleID string, resources module.ResourcesSpe
 		}
 	}
 
+	// Inject all secret keys as env vars via envFrom
+	secretName := fmt.Sprintf("polyon-module-%s", moduleID)
+	envFrom := []corev1.EnvFromSource{
+		{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+			},
+		},
+	}
+
 	container := corev1.Container{
 		Name:            moduleID,
 		Image:           resources.Image,
@@ -587,6 +603,7 @@ func (c *Client) buildPodTemplate(moduleID string, resources module.ResourcesSpe
 		Args:            resources.Args,
 		Ports:           containerPorts,
 		Env:             envVars,
+		EnvFrom:         envFrom,
 		VolumeMounts:    volumeMounts,
 		LivenessProbe:   livenessProbe,
 		ReadinessProbe:  readinessProbe,

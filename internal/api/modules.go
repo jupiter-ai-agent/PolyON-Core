@@ -397,10 +397,8 @@ func installModule(d *Deps) http.HandlerFunc {
 				}
 			}
 		}
-		_ = prcEnvMap // TODO: inject into K8s Secret via DeployModule
-
-		// 5-6. K8s Secret + Deployment + Service + Ingress 생성
-		if err := d.Kube.DeployModule(r.Context(), id, manifest.Spec); err != nil {
+		// 5-6. K8s Secret (with PRC credentials) + Deployment + Service + Ingress
+		if err := d.Kube.DeployModule(r.Context(), id, manifest.Spec, prcEnvMap); err != nil {
 			log.Error().Err(err).Str("module_id", id).Msg("K8s deployment failed")
 			d.Store.UpdateModuleStatus(r.Context(), id, "error")
 			d.Store.CreateModuleEvent(r.Context(), id, "install", "failed", "K8s deployment failed", map[string]any{"error": err.Error()})
