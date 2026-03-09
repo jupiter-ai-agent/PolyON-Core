@@ -64,6 +64,9 @@ type Spec struct {
 	LDAP      LDAPBindSpec     `yaml:"ldap,omitempty" json:"ldap,omitempty"`
 	OIDC      OIDCSpec         `yaml:"oidc,omitempty" json:"oidc,omitempty"`
 	Admin     AdminSpec        `yaml:"admin" json:"admin"`
+	// PP 규격: module-ui-spec.md v2의 console/portal 섹션
+	Console   ConsoleSpec      `yaml:"console,omitempty" json:"console,omitempty"`
+	Portal    PortalSpec       `yaml:"portal,omitempty" json:"portal,omitempty"`
 	Uninstall UninstallSpec    `yaml:"uninstall,omitempty" json:"uninstall,omitempty"`
 	// PRC: Platform Resource Claims (replaces legacy Database/LDAP/OIDC)
 	Claims    []ClaimSpec      `yaml:"claims,omitempty" json:"claims,omitempty"`
@@ -178,6 +181,63 @@ type OIDCSpec struct {
 	PublicClient bool     `yaml:"publicClient,omitempty" json:"publicClient,omitempty"`
 	RedirectURIs []string `yaml:"redirectUris,omitempty" json:"redirectUris,omitempty"`
 	WebOrigins   []string `yaml:"webOrigins,omitempty" json:"webOrigins,omitempty"`
+}
+
+// ConsoleSpec defines Console (admin) UI configuration from module.yaml.
+// PP 규격: module-ui-spec.md v2 §3
+type ConsoleSpec struct {
+	MenuGroup string     `yaml:"menuGroup" json:"menuGroup"`
+	AdminPath string     `yaml:"adminPath" json:"adminPath"`
+	Pages     []ModulePage `yaml:"pages,omitempty" json:"pages,omitempty"`
+}
+
+// PortalSpec defines Portal (user) UI configuration from module.yaml.
+type PortalSpec struct {
+	MenuGroup string     `yaml:"menuGroup" json:"menuGroup"`
+	UserPath  string     `yaml:"userPath" json:"userPath"`
+	Pages     []ModulePage `yaml:"pages,omitempty" json:"pages,omitempty"`
+}
+
+// ModulePage defines a page entry in console/portal sections.
+type ModulePage struct {
+	ID      string `yaml:"id" json:"id"`
+	Title   string `yaml:"title" json:"title"`
+	Icon    string `yaml:"icon" json:"icon"`
+	Path    string `yaml:"path" json:"path"`
+	Default bool   `yaml:"default,omitempty" json:"default,omitempty"`
+}
+
+// ToNavSpec converts ConsoleSpec to the legacy NavSpec format for backward compatibility.
+func (c *ConsoleSpec) ToNavSpec(moduleID, moduleName string) NavSpec {
+	nav := NavSpec{
+		Title:   moduleName,
+		Section: c.MenuGroup,
+	}
+	// Find default page icon and set default path
+	for _, p := range c.Pages {
+		if p.Default {
+			nav.Icon = p.Icon
+			nav.DefaultPath = "/" + moduleID
+			break
+		}
+	}
+	if nav.Icon == "" && len(c.Pages) > 0 {
+		nav.Icon = c.Pages[0].Icon
+		nav.DefaultPath = "/" + moduleID
+	}
+	// Convert pages to nav items
+	for _, p := range c.Pages {
+		path := "/" + moduleID
+		if p.Path != "" {
+			path = "/" + moduleID + "/" + p.Path
+		}
+		nav.Items = append(nav.Items, NavItem{
+			Label: p.Title,
+			Path:  path,
+			Icon:  p.Icon,
+		})
+	}
+	return nav
 }
 
 // AdminSpec defines Admin Console UI configuration.

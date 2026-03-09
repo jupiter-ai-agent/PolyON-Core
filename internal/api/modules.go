@@ -406,8 +406,16 @@ func installModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// 7. nav 정보 등록 (manifest.spec.admin.nav에서 추출)
-		navItems, err := module.MarshalNavItems(manifest.Spec.Admin.Nav.Items)
+		// 7. nav 정보 등록
+		// PP 규격: spec.console 섹션이 있으면 거기서 nav 생성
+		var navItemsList []module.NavItem
+		if manifest.Spec.Console.MenuGroup != "" || len(manifest.Spec.Console.Pages) > 0 {
+			consoleNav := manifest.Spec.Console.ToNavSpec(id, manifest.Metadata.Name)
+			navItemsList = consoleNav.Items
+		} else {
+			navItemsList = manifest.Spec.Admin.Nav.Items
+		}
+		navItems, err := module.MarshalNavItems(navItemsList)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to marshal nav items")
 			navItems = json.RawMessage("[]")
@@ -419,13 +427,21 @@ func installModule(d *Deps) http.HandlerFunc {
 			routes = json.RawMessage("[]")
 		}
 
+		// PP 규격: spec.console 섹션이 있으면 우선 사용, 없으면 legacy spec.admin.nav
+		var navSpec module.NavSpec
+		if manifest.Spec.Console.MenuGroup != "" || len(manifest.Spec.Console.Pages) > 0 {
+			navSpec = manifest.Spec.Console.ToNavSpec(id, manifest.Metadata.Name)
+		} else {
+			navSpec = manifest.Spec.Admin.Nav
+		}
+
 		navInfo := store.ModuleNav{
 			ModuleID:    id,
-			Title:       manifest.Spec.Admin.Nav.Title,
-			Section:     manifest.Spec.Admin.Nav.Section,
-			Icon:        manifest.Spec.Admin.Nav.Icon,
-			DefaultPath: manifest.Spec.Admin.Nav.DefaultPath,
-			SortOrder:   manifest.Spec.Admin.Nav.SortOrder,
+			Title:       navSpec.Title,
+			Section:     navSpec.Section,
+			Icon:        navSpec.Icon,
+			DefaultPath: navSpec.DefaultPath,
+			SortOrder:   navSpec.SortOrder,
 			NavItems:    navItems,
 			Routes:      routes,
 		}
