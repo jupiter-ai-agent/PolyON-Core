@@ -3,6 +3,7 @@ package prc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -46,8 +47,14 @@ func (p *ObjectStorageProvider) Provision(ctx context.Context, claim Claim) (Cre
 
 	// RustFS doesn't have a standard IAM API yet, so we use admin keys
 	// but track the intended per-module keys for future migration.
+	// Return clean endpoint with scheme
+	cleanEndpoint := p.Endpoint
+	if !hasScheme(cleanEndpoint) {
+		cleanEndpoint = "http://" + cleanEndpoint
+	}
+
 	return Credentials{
-		"endpoint":  "http://" + p.Endpoint,
+		"endpoint":  cleanEndpoint,
 		"bucket":    bucket,
 		"accessKey": p.AccessKey,  // admin key (Phase 1)
 		"secretKey": p.SecretKey,  // admin key (Phase 1)
@@ -102,9 +109,22 @@ func (p *ObjectStorageProvider) Status(ctx context.Context, claim Claim) (Resour
 	return StatusProvisioned, nil
 }
 
+func hasScheme(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
 func (p *ObjectStorageProvider) newClient() (*minio.Client, error) {
-	return minio.New(p.Endpoint, &minio.Options{
+	// Strip http:// or https:// — minio-go expects host:port only
+	endpoint := p.Endpoint
+	secure := false
+	if len(endpoint) > 8 && endpoint[:8] == "https://" {
+		endpoint = endpoint[8:]
+		secure = true
+	} else if len(endpoint) > 7 && endpoint[:7] == "http://" {
+		endpoint = endpoint[7:]
+	}
+	return minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(p.AccessKey, p.SecretKey, ""),
-		Secure: false,
+		Secure: secure,
 	})
 }
