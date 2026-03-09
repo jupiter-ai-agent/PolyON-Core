@@ -15,6 +15,7 @@ import (
 
 	"github.com/triangles/polyon-core/internal/api"
 	"github.com/triangles/polyon-core/internal/auth"
+	"github.com/triangles/polyon-core/internal/prc"
 	"github.com/triangles/polyon-core/internal/builder"
 	"github.com/triangles/polyon-core/internal/config"
 	"github.com/triangles/polyon-core/internal/docker"
@@ -318,6 +319,15 @@ func (s *Server) buildRouter() {
 		OpenClawClient:   s.openclawClient,
 		Sync:             s.syncDispatcher,
 	}
+
+	// PRC (Platform Resource Claim) engine initialization
+	if s.store != nil {
+		prcEngine := prc.NewEngine(s.store.Pool())
+		prc.MigrateSchema(context.Background(), s.store.Pool())
+		deps.PRC = prcEngine
+		log.Info().Msg("PRC engine initialized with 8 Foundation providers")
+	}
+
 	s.deps = deps
 
 	r.Route("/api/v1", func(r chi.Router) {

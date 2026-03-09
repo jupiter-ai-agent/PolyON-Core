@@ -4,6 +4,7 @@ package api
 import (
 	"github.com/triangles/polyon-core/internal/builder"
 	"github.com/triangles/polyon-core/internal/config"
+	"github.com/triangles/polyon-core/internal/prc"
 	"github.com/triangles/polyon-core/internal/configtrack"
 	"github.com/triangles/polyon-core/internal/docker"
 	"github.com/triangles/polyon-core/internal/engine"
@@ -58,4 +59,7 @@ type Deps struct {
 
 	// ConfigTracker writes configuration changes to the polyon-config Gitea repo.
 	ConfigTracker *configtrack.ConfigTracker
+
+	// PRC engine for Platform Resource Claims
+	PRC *prc.Engine
 }

@@ -47,6 +47,12 @@ type Metadata struct {
 	License     string `yaml:"license,omitempty" json:"license,omitempty"`
 }
 
+// ClaimSpec represents a Platform Resource Claim in module.yaml.
+type ClaimSpec struct {
+	Type   string         `yaml:"type" json:"type"`
+	Config map[string]any `yaml:"config" json:"config"`
+}
+
 // Spec contains the module specification.
 type Spec struct {
 	Engine    string           `yaml:"engine" json:"engine"`
@@ -59,6 +65,12 @@ type Spec struct {
 	OIDC      OIDCSpec         `yaml:"oidc,omitempty" json:"oidc,omitempty"`
 	Admin     AdminSpec        `yaml:"admin" json:"admin"`
 	Uninstall UninstallSpec    `yaml:"uninstall,omitempty" json:"uninstall,omitempty"`
+	// PRC: Platform Resource Claims (replaces legacy Database/LDAP/OIDC)
+	Claims    []ClaimSpec      `yaml:"claims,omitempty" json:"claims,omitempty"`
+	// PRC: env template mapping ({{ claims.TYPE.KEY }} → env var)
+	Env       map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	// PRC: data retention policy on uninstall
+	DataPolicy string          `yaml:"dataPolicy,omitempty" json:"dataPolicy,omitempty"`
 }
 
 // LDAPBindSpec defines automatic AD/LDAP binding on install.

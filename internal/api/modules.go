@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/triangles/polyon-core/internal/httputil"
 	"github.com/triangles/polyon-core/internal/module"
+	"github.com/triangles/polyon-core/internal/prc"
 	"github.com/triangles/polyon-core/internal/store"
 )
 
@@ -30,6 +31,7 @@ func RegisterModules(r chi.Router, d *Deps) {
 			r.Post("/install", installModule(d))
 			r.Post("/uninstall", uninstallModule(d))
 			r.Get("/install/status", installStatus(d))
+			r.Get("/claims", getModuleClaims(d))
 		})
 	})
 }
@@ -326,53 +328,76 @@ func installModule(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		// 4. DB 프로비저닝 (spec.database.create == true일 때)
-		if manifest.Spec.Database.Create {
-			dbPassword, err := store.GeneratePassword(24)
+		// 4. PRC (Platform Resource Claims) — if module declares claims
+		var prcEnvMap map[string]string
+		if len(manifest.Spec.Claims) > 0 && d.PRC != nil {
+			claims := make([]prc.Claim, len(manifest.Spec.Claims))
+			for i, cs := range manifest.Spec.Claims {
+				claims[i] = prc.Claim{
+					Type:   cs.Type,
+					Config: cs.Config,
+				}
+			}
+
+			envTemplates := manifest.Spec.Env
+			if envTemplates == nil {
+				envTemplates = map[string]string{}
+			}
+
+			resolved, err := d.PRC.Provision(r.Context(), id, claims, envTemplates)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to generate database password")
+				log.Error().Err(err).Str("module_id", id).Msg("PRC provisioning failed")
 				d.Store.UpdateModuleStatus(r.Context(), id, "error")
-				httputil.RespondError(w, http.StatusInternalServerError, "PASSWORD_GEN_ERROR", "데이터베이스 패스워드 생성 실패")
+				d.Store.CreateModuleEvent(r.Context(), id, "install", "failed",
+					"PRC provisioning failed: "+err.Error(), nil)
+				httputil.RespondError(w, http.StatusInternalServerError, "PRC_ERROR",
+					"리소스 프로비저닝 실패: "+err.Error())
 				return
 			}
-
-			if err := d.Store.CreateModuleDatabase(r.Context(), manifest.Spec.Database.Name, 
-				manifest.Spec.Database.User, dbPassword); err != nil {
-				log.Error().Err(err).Str("module_id", id).Msg("Database provisioning failed")
-				d.Store.UpdateModuleStatus(r.Context(), id, "error")
-				d.Store.CreateModuleEvent(r.Context(), id, "install", "failed", "Database provisioning failed", nil)
-				httputil.RespondError(w, http.StatusInternalServerError, "DB_PROVISION_ERROR", "데이터베이스 프로비저닝 실패")
-				return
-			}
-
-			// Update secret with actual database password
-			dbURL := store.GetDatabaseConnection("polyon-db", "5432", 
-				manifest.Spec.Database.Name, manifest.Spec.Database.User, dbPassword)
-			
-			secretData := map[string][]byte{
-				"DATABASE_URL": []byte(dbURL),
-				"DB_PASSWORD":  []byte(dbPassword),
-			}
-			
-			// We'll update this after K8s secret creation
-			defer func() {
-				if err := d.Kube.UpdateSecretData(r.Context(), id, secretData); err != nil {
-					log.Error().Err(err).Str("module_id", id).Msg("Failed to update secret with DB password")
+			prcEnvMap = resolved
+			log.Info().Str("module_id", id).Int("claims", len(claims)).Msg("PRC provisioning completed")
+		} else {
+			// Legacy path: spec.database + RustFS bucket
+			if manifest.Spec.Database.Create {
+				dbPassword, err := store.GeneratePassword(24)
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to generate database password")
+					d.Store.UpdateModuleStatus(r.Context(), id, "error")
+					httputil.RespondError(w, http.StatusInternalServerError, "PASSWORD_GEN_ERROR", "데이터베이스 패스워드 생성 실패")
+					return
 				}
-			}()
-		}
 
-		// 4.5 RustFS 버킷 생성 (S3 오브젝트 스토리지 필요 시)
-		for _, env := range manifest.Spec.Resources.Env {
-			if env.Name == "OBJECTSTORE_S3_BUCKET" && env.Value != "" {
-				bucketName := env.Value
-				if err := ensureRustFSBucket(d, bucketName); err != nil {
-					log.Warn().Err(err).Str("bucket", bucketName).Msg("RustFS bucket creation failed (non-fatal)")
-				} else {
-					log.Info().Str("bucket", bucketName).Msg("RustFS bucket ensured")
+				if err := d.Store.CreateModuleDatabase(r.Context(), manifest.Spec.Database.Name,
+					manifest.Spec.Database.User, dbPassword); err != nil {
+					log.Error().Err(err).Str("module_id", id).Msg("Database provisioning failed")
+					d.Store.UpdateModuleStatus(r.Context(), id, "error")
+					d.Store.CreateModuleEvent(r.Context(), id, "install", "failed", "Database provisioning failed", nil)
+					httputil.RespondError(w, http.StatusInternalServerError, "DB_PROVISION_ERROR", "데이터베이스 프로비저닝 실패")
+					return
+				}
+
+				dbURL := store.GetDatabaseConnection("polyon-db", "5432",
+					manifest.Spec.Database.Name, manifest.Spec.Database.User, dbPassword)
+				secretData := map[string][]byte{
+					"DATABASE_URL": []byte(dbURL),
+					"DB_PASSWORD":  []byte(dbPassword),
+				}
+				defer func() {
+					if err := d.Kube.UpdateSecretData(r.Context(), id, secretData); err != nil {
+						log.Error().Err(err).Str("module_id", id).Msg("Failed to update secret with DB password")
+					}
+				}()
+			}
+
+			for _, env := range manifest.Spec.Resources.Env {
+				if env.Name == "OBJECTSTORE_S3_BUCKET" && env.Value != "" {
+					if err := ensureRustFSBucket(d, env.Value); err != nil {
+						log.Warn().Err(err).Str("bucket", env.Value).Msg("RustFS bucket creation failed (non-fatal)")
+					}
 				}
 			}
 		}
+		_ = prcEnvMap // TODO: inject into K8s Secret via DeployModule
 
 		// 5-6. K8s Secret + Deployment + Service + Ingress 생성
 		if err := d.Kube.DeployModule(r.Context(), id, manifest.Spec); err != nil {
@@ -559,12 +584,19 @@ func uninstallModule(d *Deps) http.HandlerFunc {
 			// Continue with database cleanup even if K8s deletion fails
 		}
 
-		// 2. DB 삭제 (데이터 정책에 따라)
-		if req.DataPolicy == "delete" && manifest.Spec.Database.Create {
-			if err := d.Store.DeleteModuleDatabase(r.Context(), manifest.Spec.Database.Name, 
+		// 2. PRC Deprovision (if claims exist) or legacy DB cleanup
+		if len(manifest.Spec.Claims) > 0 && d.PRC != nil && req.DataPolicy == "delete" {
+			claims := make([]prc.Claim, len(manifest.Spec.Claims))
+			for i, cs := range manifest.Spec.Claims {
+				claims[i] = prc.Claim{Type: cs.Type, Config: cs.Config}
+			}
+			if err := d.PRC.Deprovision(r.Context(), id, claims); err != nil {
+				log.Error().Err(err).Str("module_id", id).Msg("PRC deprovision failed")
+			}
+		} else if req.DataPolicy == "delete" && manifest.Spec.Database.Create {
+			if err := d.Store.DeleteModuleDatabase(r.Context(), manifest.Spec.Database.Name,
 				manifest.Spec.Database.User); err != nil {
 				log.Error().Err(err).Str("module_id", id).Msg("Database deletion failed")
-				// Continue with record cleanup
 			}
 		}
 
@@ -675,6 +707,26 @@ func extractImageName(image string) string {
 	
 	name := strings.Split(image, ":")[0]
 	return strings.Title(strings.ReplaceAll(name, "-", " "))
+}
+
+// getModuleClaims returns PRC claim status for a module.
+func getModuleClaims(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if d.PRC == nil {
+			httputil.RespondError(w, http.StatusServiceUnavailable, "PRC_UNAVAILABLE", "PRC 엔진을 사용할 수 없습니다")
+			return
+		}
+		id := chi.URLParam(r, "id")
+		claims, err := d.PRC.GetClaimsForModule(r.Context(), id)
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "Claim 조회 실패")
+			return
+		}
+		httputil.RespondOK(w, map[string]any{
+			"moduleId": id,
+			"claims":   claims,
+		})
+	}
 }
 
 // ensureRustFSBucket creates a RustFS/S3 bucket if it doesn't exist.
