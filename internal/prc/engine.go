@@ -206,6 +206,14 @@ func buildProviders(pool *pgxpool.Pool) []ResourceProvider {
 			Endpoint:  envOr("AI_ENDPOINT", "http://polyon-ai:4000"),
 			MasterKey: envOr("LITELLM_MASTER_KEY", ""),
 		},
+		// 9. Auth (Keycloak OIDC)
+		&AuthProvider{
+			AdminURL:      envOrMulti([]string{"KC_ADMIN_URL", "KEYCLOAK_URL", "POLYON_AUTH_URL"}, "http://polyon-auth:8080"),
+			Realm:         envOr("KC_REALM", "polyon"),
+			AdminUser:     envOr("KC_ADMIN_USER", "admin"),
+			AdminPassword: envOrMulti([]string{"KC_ADMIN_PASSWORD", "POLYON_KC_ADMIN_PASSWORD"}, ""),
+			BaseDomain:    envOrMulti([]string{"BASE_DOMAIN", "POLYON_DOMAIN"}, ""),
+		},
 	}
 
 	return providers
