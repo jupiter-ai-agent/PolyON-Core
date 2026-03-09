@@ -203,7 +203,7 @@ func smtpTest(d *Deps) http.HandlerFunc {
 			Subject string `json:"subject"`
 			Body    string `json:"body"`
 		}
-		req.Subject = "HELIOS 테스트 메일"
+		req.Subject = "PolyON 테스트 메일"
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httputil.RespondError(w, 400, "BAD_REQUEST", "Invalid JSON")
 			return
@@ -223,7 +223,7 @@ func smtpTest(d *Deps) http.HandlerFunc {
 		if body == "" {
 			body = fmt.Sprintf(`<div style="font-family:'IBM Plex Sans',Arial,sans-serif;max-width:500px;margin:0 auto;">
   <div style="background:#161616;color:#fff;padding:1rem 1.5rem;">
-    <h2 style="margin:0;font-size:1rem;">HELIOS</h2>
+    <h2 style="margin:0;font-size:1rem;">PolyON</h2>
   </div>
   <div style="padding:1.5rem;border:1px solid #e0e0e0;border-top:none;">
     <p style="margin:0 0 1rem;font-size:0.9375rem;">SMTP 테스트 메일이 정상적으로 발송되었습니다.</p>

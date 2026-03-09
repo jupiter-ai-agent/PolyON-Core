@@ -132,7 +132,7 @@ spec:
   # ── OIDC 클라이언트 ──
   oidc:
     create: true
-    realm: helios
+    realm: polyon
     clientId: nextcloud
     publicClient: false
     redirectUris:

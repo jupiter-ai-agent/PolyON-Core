@@ -327,7 +327,7 @@ func importExternalGit(d *Deps) http.HandlerFunc {
 		// Delete existing repo if any, then create mirror
 		_ = d.Gitea.DeleteRepo(giteaOwner, site.Slug)
 
-		repo, err := d.Gitea.CreateMirror(site.Slug, req.RepoURL, "HELIOS Homepage: "+site.Name)
+		repo, err := d.Gitea.CreateMirror(site.Slug, req.RepoURL, "PolyON Homepage: "+site.Name)
 		if err != nil {
 			log.Error().Err(err).Str("site", siteID).Str("url", req.RepoURL).Msg("import git failed")
 			httputil.RespondError(w, http.StatusBadGateway, "git import failed", err.Error())

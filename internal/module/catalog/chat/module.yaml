@@ -5,7 +5,7 @@ kind: Module
 # ── 기본 정보 ──
 metadata:
   id: mattermost                    # 고유 식별자 (영문 소문자, 하이픈)
-  name: HELIOS Chat                 # 표시명
+  name: PolyON Chat                 # 표시명
   version: 2.0.3                   # 시맨틱 버전
   category: engine                  # engine | ai | process | monitoring
   icon: Chat                        # @carbon/icons-react 컴포넌트명
@@ -100,7 +100,7 @@ spec:
   # ── OIDC 클라이언트 ──
   oidc:
     create: true                     # true면 Keycloak에 자동 등록
-    realm: helios
+    realm: polyon
     clientId: mattermost
     publicClient: false
     redirectUris:

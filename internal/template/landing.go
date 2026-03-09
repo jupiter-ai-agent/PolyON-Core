@@ -79,7 +79,7 @@ const landingPagesIndex = `import Head from 'next/head'
 import { fetchPage } from '../lib/strapi'
 
 export default function Landing({ page }) {
-  const title = page?.title || 'HELIOS Landing'
+  const title = page?.title || 'PolyON Landing'
   const tagline = page?.tagline || '제품명을 한 줄로 설명하세요'
   const description = page?.description || '고객의 문제를 어떻게 해결하는지 간결하게 씁니다.'
   const ctaLabel = page?.ctaLabel || '무료로 시작하기'

@@ -97,15 +97,15 @@ var serviceContainers = []serviceContainer{
 	// Tier 0 — Basecamp
 	{"polyon-db", "PostgreSQL", "database", 0, "Basecamp"},
 	{"polyon-proxy", "Traefik Proxy", "network", 0, "Basecamp"},
-	{"polyon-auth", "HELIOS Auth", "security", 0, "Basecamp"},
-	{"polyon-core", "HELIOS Core", "server", 0, "Basecamp"},
+	{"polyon-auth", "PolyON Auth", "security", 0, "Basecamp"},
+	{"polyon-core", "PolyON Core", "server", 0, "Basecamp"},
 	{"polyon-console", "PolyON Console", "ui", 0, "Basecamp"},
 	// Tier 1 — 기반 인프라
 	{"polyon-redis", "Redis", "cache", 1, "기반 인프라"},
 	{"polyon-search", "Elasticsearch", "search", 1, "기반 인프라"},
 	{"polyon-rustfs", "RustFS", "storage", 1, "기반 인프라"},
 	// Tier 2 — 핵심 서비스
-	{"polyon-dc", "HELIOS AD DC", "directory", 2, "핵심 서비스"},
+	{"polyon-dc", "PolyON AD DC", "directory", 2, "핵심 서비스"},
 	{"polyon-mail", "Stalwart Mail", "mail", 2, "핵심 서비스"},
 	// Tier 3 — 모니터링
 	{"polyon-prometheus", "Prometheus", "monitoring", 3, "모니터링"},
@@ -363,12 +363,12 @@ func startSetup(d *Deps) http.HandlerFunc {
 		// Determine image tag (same as what core is running)
 		hostDir := getHostProjectDir(d)
 		imageTag := "jupitertriangles/polyon-core:202602"
-		if tag := os.Getenv("HELIOS_IMAGE_TAG"); tag != "" {
+		if tag := os.Getenv("PolyON_IMAGE_TAG"); tag != "" {
 			imageTag = tag
 		}
 
 		// Determine external URL for Keycloak frontendUrl
-		externalURL := os.Getenv("HELIOS_EXTERNAL_URL")
+		externalURL := os.Getenv("PolyON_EXTERNAL_URL")
 		if externalURL == "" {
 			externalURL = "https://192.168.55.200:1111"
 		}
@@ -382,7 +382,7 @@ func startSetup(d *Deps) http.HandlerFunc {
 			"-v", hostDir+":/polyon",
 			"-v", "polyon_polyon-shared:/shared",
 			"-e", "HOST_PROJECT_DIR="+hostDir,
-			"-e", "HELIOS_EXTERNAL_URL="+externalURL,
+			"-e", "PolyON_EXTERNAL_URL="+externalURL,
 			imageTag,
 		)
 		out, err := cmd.CombinedOutput()

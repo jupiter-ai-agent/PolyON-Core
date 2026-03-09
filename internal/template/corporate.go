@@ -94,7 +94,7 @@ import Footer from '../components/Footer'
 import { fetchPage } from '../lib/strapi'
 
 export default function Home({ page }) {
-  const title = page?.title || 'HELIOS Corporate'
+  const title = page?.title || 'PolyON Corporate'
   const description = page?.description || 'Professional corporate website'
 
   return (
@@ -144,7 +144,7 @@ export default function Header({ nav }) {
       <div className="container header-inner">
         <Link href="/" className="logo">
           <span className="logo-mark">◆</span>
-          <span className="logo-name">HELIOS</span>
+          <span className="logo-name">PolyON</span>
         </Link>
 
         <nav className={` + "`" + `nav ${open ? 'nav-open' : ''}` + "`" + `}>
@@ -338,7 +338,7 @@ const compContact = `export default function Contact({ data }) {
 `
 
 const compFooter = `export default function Footer({ data }) {
-  const company = data?.company || 'HELIOS'
+  const company = data?.company || 'PolyON'
   const links = data?.links || [
     { label: '소개', href: '#about' },
     { label: '서비스', href: '#services' },

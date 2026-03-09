@@ -406,7 +406,7 @@ func fetchContainerStatus() ([]map[string]interface{}, error) {
 
 // ─── LLM call ────────────────────────────────────────────────────────────────
 
-const sentinelSystemPrompt = `You are Sentinel, an infrastructure monitoring AI agent for HELIOS.
+const sentinelSystemPrompt = `You are Sentinel, an infrastructure monitoring AI agent for PolyON.
 Analyze the system status and report any anomalies.
 Respond ONLY in JSON format with no additional text or markdown:
 {
@@ -486,7 +486,7 @@ func callLLM(cfg *sentinelConfig, status *systemStatus) (*llmResult, error) {
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("HTTP-Referer", "https://polyon.oplabs.co.kr")
-	req.Header.Set("X-Title", "HELIOS Sentinel")
+	req.Header.Set("X-Title", "PolyON Sentinel")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

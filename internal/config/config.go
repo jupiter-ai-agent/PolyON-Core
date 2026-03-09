@@ -80,7 +80,7 @@ type Config struct {
 	// SMTP (from smtp.json)
 	SMTP SMTPConfig `json:"smtp"`
 
-	// Nextcloud (HELIOS Drive)
+	// Nextcloud (PolyON Drive)
 	NextcloudURL           string `json:"-"`
 	NextcloudAdminUser     string `json:"-"`
 	NextcloudAdminPassword string `json:"-"`
@@ -261,7 +261,7 @@ func Load() (*Config, error) {
 	c.GrafanaUser = envMapOr(envMap, "GF_SECURITY_ADMIN_USER", "grafana")
 	c.GrafanaPassword = envMapOr(envMap, "GF_SECURITY_ADMIN_PASSWORD", "")
 
-	// Nextcloud (HELIOS Drive)
+	// Nextcloud (PolyON Drive)
 	c.NextcloudURL = envOr("NEXTCLOUD_URL", "http://polyon-drive")
 	c.NextcloudAdminUser = envMapOr(envMap, "NEXTCLOUD_ADMIN_USER", "admin")
 	c.NextcloudAdminPassword = envMapOr(envMap, "NEXTCLOUD_ADMIN_PASSWORD", "")

@@ -290,7 +290,7 @@ func generateWildcardCert(d *Deps, baseDomain string) string {
 	}
 
 	// Generate self-signed wildcard cert with openssl
-	subject := fmt.Sprintf("/CN=*.%s/O=HELIOS/C=KR", baseDomain)
+	subject := fmt.Sprintf("/CN=*.%s/O=PolyON/C=KR", baseDomain)
 	san := fmt.Sprintf("DNS:*.%s,DNS:%s", baseDomain, baseDomain)
 
 	cmd := exec.Command("openssl", "req", "-x509", "-nodes",

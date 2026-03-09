@@ -740,7 +740,7 @@ func handleProvisionOnlyOffice(d *Deps) http.HandlerFunc {
 			}
 		}
 
-		// Default JWT enabled = true (HELIOS default)
+		// Default JWT enabled = true (PolyON default)
 		jwtEnabled := true
 		if req.JWTEnabled != nil {
 			jwtEnabled = *req.JWTEnabled

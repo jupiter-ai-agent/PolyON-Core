@@ -90,7 +90,7 @@ function timeAgo(dateStr) {
 }
 
 export default function Blog({ posts, siteName }) {
-  const name = siteName || 'HELIOS Blog'
+  const name = siteName || 'PolyON Blog'
 
   return (
     <>
@@ -156,7 +156,7 @@ export default function Blog({ posts, siteName }) {
       <footer className="blog-footer">
         <div className="blog-container blog-footer-inner">
           <span className="blog-logo">◆ {name}</span>
-          <p>© {new Date().getFullYear()} {name}. Powered by HELIOS.</p>
+          <p>© {new Date().getFullYear()} {name}. Powered by PolyON.</p>
         </div>
       </footer>
     </>
@@ -405,10 +405,10 @@ function getFallbackPosts() {
     {
       id: 1, slug: 'welcome',
       title: '첫 번째 포스트에 오신 것을 환영합니다',
-      excerpt: 'HELIOS Blog 템플릿으로 블로그를 시작해보세요. Strapi CMS를 연결하면 이 데모 콘텐츠가 실제 글로 교체됩니다.',
-      content: 'HELIOS Blog 템플릿으로 블로그를 시작해보세요. Strapi CMS를 연결하면 이 데모 콘텐츠가 실제 글로 교체됩니다.',
+      excerpt: 'PolyON Blog 템플릿으로 블로그를 시작해보세요. Strapi CMS를 연결하면 이 데모 콘텐츠가 실제 글로 교체됩니다.',
+      content: 'PolyON Blog 템플릿으로 블로그를 시작해보세요. Strapi CMS를 연결하면 이 데모 콘텐츠가 실제 글로 교체됩니다.',
       category: '공지',
-      author: 'HELIOS',
+      author: 'PolyON',
       publishedAt: new Date().toISOString(),
     },
     {
@@ -417,7 +417,7 @@ function getFallbackPosts() {
       excerpt: 'NEXT_PUBLIC_STRAPI_URL 환경변수를 설정하면 Strapi의 posts 컬렉션 타입과 자동으로 연동됩니다.',
       content: 'NEXT_PUBLIC_STRAPI_URL 환경변수를 설정하면 Strapi의 posts 컬렉션 타입과 자동으로 연동됩니다.',
       category: '튜토리얼',
-      author: 'HELIOS',
+      author: 'PolyON',
       publishedAt: new Date(Date.now() - 86400000).toISOString(),
     },
   ]

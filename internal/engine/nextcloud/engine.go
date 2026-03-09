@@ -4,7 +4,7 @@ import (
 	"github.com/triangles/polyon-core/internal/engine"
 )
 
-// Engine implements the PolyON engine interface for Nextcloud (HELIOS Drive).
+// Engine implements the PolyON engine interface for Nextcloud (PolyON Drive).
 type Engine struct {
 	client *Client
 }

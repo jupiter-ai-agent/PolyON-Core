@@ -1,6 +1,6 @@
 // Package auth — forward.go provides the Traefik Forward Auth endpoint.
 // Traefik sends every request to /api/internal/auth/verify before forwarding.
-// This handler validates the HELIOS_TOKEN cookie (or Authorization header),
+// This handler validates the PolyON_TOKEN cookie (or Authorization header),
 // and redirects unauthenticated users to the Keycloak login page.
 package auth
 
@@ -81,7 +81,7 @@ func forwardAuthVerify(cfg *config.Config) http.HandlerFunc {
 }
 
 // forwardAuthCallback handles the OIDC authorization code callback from Keycloak.
-// It exchanges the code for tokens, sets the HELIOS_TOKEN cookie, and redirects
+// It exchanges the code for tokens, sets the PolyON_TOKEN cookie, and redirects
 // the user back to the original URL.
 func forwardAuthCallback(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +100,7 @@ func forwardAuthCallback(cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		// Set HELIOS_TOKEN cookie (domain-wide, .baseDomain)
+		// Set PolyON_TOKEN cookie (domain-wide, .baseDomain)
 		baseDomain := baseDomainFromConfig(cfg)
 		cookieDomain := "." + baseDomain
 		if baseDomain == "" {
@@ -133,7 +133,7 @@ func forwardAuthCallback(cfg *config.Config) http.HandlerFunc {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// extractToken pulls the JWT from the HELIOS_TOKEN cookie or Authorization header.
+// extractToken pulls the JWT from the PolyON_TOKEN cookie or Authorization header.
 func extractToken(r *http.Request) string {
 	// 1. Cookie
 	if c, err := r.Cookie(polyonTokenCookie); err == nil && c.Value != "" {

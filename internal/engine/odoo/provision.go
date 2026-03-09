@@ -166,7 +166,7 @@ func (c *Client) deactivateUser(id int) error {
 }
 
 // randomPassword generates a cryptographically random password of n characters
-// using only a-zA-Z0-9-_ (HELIOS password charset rule).
+// using only a-zA-Z0-9-_ (PolyON password charset rule).
 func randomPassword(n int) (string, error) {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 	buf := make([]byte, n)

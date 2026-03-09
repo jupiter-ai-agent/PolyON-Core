@@ -76,7 +76,7 @@ export default function App({ Component, pageProps }) {
 const blankPagesIndex = `export default function Home() {
   return (
     <main>
-      <h1>Hello, HELIOS!</h1>
+      <h1>Hello, PolyON!</h1>
       <p>여기서 시작하세요. 이 파일을 수정해 원하는 페이지를 만들어보세요.</p>
     </main>
   )

@@ -197,14 +197,14 @@ func New(cfg *config.Config) (*Server, error) {
 	reg.Register(litellmEngine.NewEngine(litellmCl))
 	log.Info().Str("url", cfg.LiteLLMURL).Msg("LiteLLM engine registered")
 
-	// Nextcloud (HELIOS Drive) engine + provisioner
+	// Nextcloud (PolyON Drive) engine + provisioner
 	ncCl := nextcloudEngine.NewClient(cfg.NextcloudURL, cfg.NextcloudAdminUser, cfg.NextcloudAdminPassword, "polyon-drive")
 	ncEngine := nextcloudEngine.NewEngine(cfg.NextcloudURL, cfg.NextcloudAdminUser, cfg.NextcloudAdminPassword, "polyon-drive")
 	reg.Register(ncEngine)
 	driveProvisioner := nextcloudEngine.NewProvisioner(ncCl, stdlog.New(os.Stderr, "[drive] ", stdlog.LstdFlags))
 	log.Info().Str("url", cfg.NextcloudURL).Msg("Nextcloud Drive engine registered")
 
-	// OnlyOffice (HELIOS Office) engine
+	// OnlyOffice (PolyON Office) engine
 	ooCl := onlyofficeEngine.NewClient(cfg.OnlyOfficeURL)
 	reg.Register(onlyofficeEngine.NewEngine(ooCl))
 	log.Info().Str("url", cfg.OnlyOfficeURL).Msg("OnlyOffice engine registered")

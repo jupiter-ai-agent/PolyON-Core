@@ -183,7 +183,7 @@ func createSite(d *Deps) http.HandlerFunc {
 		// Create Gitea repo (always — even for strapi sites)
 		if d.Gitea != nil {
 			repoName := site.Slug
-			desc := "HELIOS Homepage: " + site.Name
+			desc := "PolyON Homepage: " + site.Name
 			if req.Method == "git" && req.RepoURL != nil && *req.RepoURL != "" {
 				// Mirror external repo
 				repo, err := d.Gitea.CreateMirror(repoName, *req.RepoURL, desc)

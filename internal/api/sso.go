@@ -130,7 +130,7 @@ func (k *kcClient) createRealm(realm string) error {
 	body := map[string]interface{}{
 		"realm":   realm,
 		"enabled": true,
-		"displayName": "HELIOS " + strings.ToUpper(realm[:1]) + realm[1:],
+		"displayName": "PolyON " + strings.ToUpper(realm[:1]) + realm[1:],
 	}
 	resp, err := k.do("POST", "/admin/realms", body)
 	if err != nil {

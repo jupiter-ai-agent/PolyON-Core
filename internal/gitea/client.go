@@ -225,7 +225,7 @@ func ldapAuthSourceBody(cfg LDAPConfig) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"name":                    "HELIOS AD",
+		"name":                    "PolyON AD",
 		"type":                    6, // LDAP via BindDN
 		"is_active":               true,
 		"security_protocol":       0, // unencrypted
@@ -248,7 +248,7 @@ func ldapAuthSourceBody(cfg LDAPConfig) map[string]interface{} {
 // ConfigureLDAP is a no-op placeholder.
 // Gitea 1.23 removed /api/v1/admin/auths — LDAP auth sources must be
 // configured via `gitea admin auth` CLI inside the container, or via
-// the Gitea web admin UI.  The existing "HELIOS SSO" (OAuth2, id=3)
+// the Gitea web admin UI.  The existing "PolyON SSO" (OAuth2, id=3)
 // was already created via CLI during initial setup.
 func (c *Client) ConfigureLDAP(cfg LDAPConfig) error {
 	// Verify Gitea is reachable first.
