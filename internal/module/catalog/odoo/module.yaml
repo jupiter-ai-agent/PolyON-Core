@@ -1,11 +1,13 @@
-# PolyON Module Manifest — PP Odoo
+# PolyON Module Manifest — PP Odoo v0.2.0
+# PP 제1원칙: Keycloak SSO 인증 (LDAP 직접 인증 금지)
+
 apiVersion: polyon.io/v1
 kind: Module
 
 metadata:
   id: odoo
   name: PP Odoo
-  version: "0.1.0"
+  version: "0.2.0"
   category: engine
   description: "ERP/HR/비즈니스 관리 플랫폼"
   icon: Enterprise
@@ -18,12 +20,9 @@ spec:
   requires:
     - id: postgresql
     - id: rustfs
-    - id: samba-dc
-    - id: stalwart
-    - id: redis
 
   resources:
-    image: jupitertriangles/polyon-odoo:v0.1.0
+    image: jupitertriangles/polyon-odoo:v0.2.0
     replicas: 1
     ports:
       - name: http
@@ -41,6 +40,7 @@ spec:
         cpu: "2"
         memory: 2Gi
 
+  # PRC Claims (4개: DB, S3, SMTP, Auth)
   claims:
     - type: database
       config:
@@ -48,34 +48,42 @@ spec:
     - type: objectStorage
       config:
         bucket: odoo
-    - type: directory
-      config:
-        ou: odoo
     - type: smtp
       config:
         domain: odoo
-    - type: cache
+    - type: auth
+      config:
+        clientId: odoo
+        accessType: public
+        redirectUris:
+          - "https://odoo.{{ baseDomain }}/*"
+          - "https://console.{{ baseDomain }}/modules/odoo/*"
+          - "https://portal.{{ baseDomain }}/modules/odoo/*"
 
   env:
+    # Database
     DB_HOST: "{{ claims.database.host }}"
     DB_PORT: "{{ claims.database.port }}"
     DB_NAME: "{{ claims.database.database }}"
     DB_USER: "{{ claims.database.user }}"
     DB_PASSWORD: "{{ claims.database.password }}"
+    # S3 Attachment (RustFS)
     AWS_HOST: "{{ claims.objectStorage.endpoint }}"
     AWS_BUCKET_NAME: "{{ claims.objectStorage.bucket }}"
     AWS_ACCESS_KEY_ID: "{{ claims.objectStorage.accessKey }}"
     AWS_SECRET_ACCESS_KEY: "{{ claims.objectStorage.secretKey }}"
-    LDAP_SERVER: "{{ claims.directory.host }}"
-    LDAP_PORT: "{{ claims.directory.port }}"
-    LDAP_BIND_DN: "{{ claims.directory.bindDN }}"
-    LDAP_BIND_PASSWORD: "{{ claims.directory.bindPassword }}"
-    LDAP_BASE_DN: "{{ claims.directory.baseDN }}"
+    # SMTP (Stalwart Mail)
     SMTP_HOST: "{{ claims.smtp.host }}"
     SMTP_PORT: "{{ claims.smtp.port }}"
     SMTP_USER: "{{ claims.smtp.user }}"
     SMTP_PASSWORD: "{{ claims.smtp.password }}"
-    REDIS_URL: "{{ claims.cache.url }}"
+    # Keycloak OIDC SSO (PP 제1원칙)
+    OIDC_ISSUER: "{{ claims.auth.issuer }}"
+    OIDC_CLIENT_ID: "{{ claims.auth.clientId }}"
+    OIDC_AUTH_ENDPOINT: "{{ claims.auth.authEndpoint }}"
+    OIDC_TOKEN_ENDPOINT: "{{ claims.auth.tokenEndpoint }}"
+    OIDC_JWKS_URI: "{{ claims.auth.jwksUri }}"
+    # Odoo 정적 설정
     ODOO_ADMIN_PASSWORD: "admin"
     ODOO_DB_FILTER: "^polyon_odoo$"
     ODOO_LIST_DB: "false"
