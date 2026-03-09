@@ -203,6 +203,9 @@ func (s *Store) migrateComponents() {
 		return
 	}
 
+	// Migration: old ID 정리 (litellm → polyon-ai로 교체, gitea는 engine→foundation)
+	s.pool.Exec(ctx, `DELETE FROM polyon_components WHERE id = 'litellm'`)
+
 	for _, c := range seedComponents {
 		_, err := s.pool.Exec(ctx, `
 			INSERT INTO polyon_components (id, name, description, category, sort_order,
@@ -248,8 +251,8 @@ func (s *Store) ListComponents(ctx context.Context, category, status string) ([]
 		idx++
 	}
 	query += ` ORDER BY CASE category
-		WHEN 'engine' THEN 1 WHEN 'ai' THEN 2 WHEN 'process' THEN 3
-		WHEN 'core' THEN 4 WHEN 'infra' THEN 5 WHEN 'monitoring' THEN 6
+		WHEN 'foundation' THEN 1 WHEN 'engine' THEN 2 WHEN 'ai' THEN 3
+		WHEN 'process' THEN 4 WHEN 'monitoring' THEN 5
 		ELSE 99 END, sort_order, id`
 
 	rows, err := s.pool.Query(ctx, query, args...)
