@@ -51,6 +51,8 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 	}
 	// Grant full access to module user (PG 17 compatible)
 	p.Pool.Exec(ctx, fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO %s", dbName, user))
+	// Set module user as DB owner (Odoo list_dbs requires ownership)
+	p.Pool.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s OWNER TO %s", dbName, user))
 
 	// PG 15+: public schema requires explicit GRANT
 	grantPool, gErr := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
