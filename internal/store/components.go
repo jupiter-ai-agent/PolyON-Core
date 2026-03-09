@@ -108,7 +108,7 @@ var seedComponents = []Component{
 	{ID: "opa", Name: "PolyON Policy", Description: "인가 · 정책 엔진 (OPA)", Category: "foundation", SortOrder: 5,
 		ContainerName: "polyon-opa", Engine: "opa", Host: "polyon-opa", Port: 8181,
 		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "policy", Accent: "#7d4e00",
-		DependsOn: j(`["keycloak"]`), Status: "planned"},
+		DependsOn: j(`["keycloak"]`), Status: "active"},
 	// Infrastructure
 	{ID: "postgresql", Name: "PostgreSQL", Description: "Database", Category: "foundation", SortOrder: 6,
 		ContainerName: "polyon-db", Engine: "postgresql", Host: "polyon-db", Port: 5432,
@@ -137,12 +137,12 @@ var seedComponents = []Component{
 	{ID: "gitea", Name: "Gitea", Description: "Git Repository", Category: "foundation", SortOrder: 12,
 		ContainerName: "polyon-gitea", Engine: "gitea", Host: "polyon-gitea", Port: 3000,
 		HealthEndpoint: "/api/v1/version", HealthMethod: "GET", Icon: "code", Accent: "#609926",
-		DependsOn: j(`["postgresql","polyon-dc"]`), Status: "planned"},
+		DependsOn: j(`["postgresql"]`), Status: "active"},
 	// Capability
 	{ID: "polyon-ai", Name: "PolyON AI", Description: "AI Gateway (LiteLLM)", Category: "foundation", SortOrder: 13,
 		ContainerName: "polyon-ai", Engine: "litellm", Host: "polyon-ai", Port: 4000,
 		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "watsonHealth3rdParty", Accent: "#8a3ffc",
-		DependsOn: j(`["postgresql","redis"]`), Status: "planned"},
+		DependsOn: j(`["postgresql","redis"]`), Status: "active"},
 
 	// ── monitoring: 관측 및 대시보드 (5) ──
 	{ID: "prometheus", Name: "Prometheus", Description: "Metrics", Category: "monitoring", SortOrder: 1,
