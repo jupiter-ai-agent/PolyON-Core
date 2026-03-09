@@ -27,7 +27,7 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 	user := "mod_" + name
 	password := generatePassword(24)
 
-	// 1. CREATE ROLE (idempotent) + GRANT to current user (PG 16+ SET ROLE requirement)
+	// 1. CREATE ROLE (idempotent)
 	_, err := p.Pool.Exec(ctx, fmt.Sprintf(
 		`DO $$ BEGIN
 			IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='%s') THEN
@@ -37,19 +37,18 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 	if err != nil {
 		return nil, fmt.Errorf("create role %s: %w", user, err)
 	}
-	// PG 16+ requires ADMIN grant before SET ROLE (used internally by CREATE DATABASE ... OWNER)
-	p.Pool.Exec(ctx, fmt.Sprintf("GRANT %s TO CURRENT_USER WITH ADMIN OPTION", user))
 
-	// 2. CREATE DATABASE (idempotent check)
+	// 2. CREATE DATABASE (PG 17 compatible: no OWNER clause, then GRANT ALL)
 	var exists bool
 	p.Pool.QueryRow(ctx, "SELECT true FROM pg_database WHERE datname=$1", dbName).Scan(&exists)
 	if !exists {
-		// CREATE DATABASE cannot run inside a transaction
-		_, err = p.Pool.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s OWNER %s", dbName, user))
+		_, err = p.Pool.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s", dbName))
 		if err != nil {
 			return nil, fmt.Errorf("create database %s: %w", dbName, err)
 		}
 	}
+	// Grant full access to module user (PG 17: OWNER TO requires SET ROLE, so use GRANT instead)
+	p.Pool.Exec(ctx, fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO %s", dbName, user))
 
 	// 3. Extensions
 	if exts := claim.ConfigString("extensions", ""); exts != "" {
