@@ -40,10 +40,10 @@ var seedComponents = []Component{
 		ContainerName: "polyon-mattermost", Engine: "mattermost", Host: "polyon-mattermost", Port: 8065,
 		HealthEndpoint: "/api/v4/system/ping", HealthMethod: "GET", Icon: "chat", Accent: "#0058CC",
 		DependsOn: j(`["postgresql","polyon-auth"]`), Status: "planned"},
-	{ID: "nextcloud", Name: "PolyON Drive", Description: "문서 관리 (Nextcloud)", Category: "engine", SortOrder: 3,
-		ContainerName: "polyon-drive", Engine: "nextcloud", Host: "polyon-drive", Port: 80,
-		HealthEndpoint: "/status.php", HealthMethod: "GET", Icon: "folder", Accent: "#0082C9",
-		DependsOn: j(`["postgresql","redis","polyon-auth"]`), Status: "planned"},
+	{ID: "drive", Name: "PP Drive", Description: "파일 스토리지 (WebDAV, 공유, 버전)", Category: "engine", SortOrder: 3,
+		ContainerName: "polyon-drive", Engine: "drive", Host: "polyon-drive", Port: 8080,
+		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "folder", Accent: "#0082C9",
+		DependsOn: j(`["postgresql","rustfs","polyon-dc"]`), Status: "planned"},
 	{ID: "onlyoffice", Name: "PolyON Office", Description: "문서 편집 (OnlyOffice Docs)", Category: "engine", SortOrder: 4,
 		ContainerName: "polyon-office", Engine: "onlyoffice", Host: "polyon-office", Port: 80,
 		HealthEndpoint: "/healthcheck", HealthMethod: "GET", Icon: "document", Accent: "#FF6F3D",
@@ -203,8 +203,9 @@ func (s *Store) migrateComponents() {
 		return
 	}
 
-	// Migration: old ID 정리 (litellm → polyon-ai로 교체, gitea는 engine→foundation)
+	// Migration: old ID 정리
 	s.pool.Exec(ctx, `DELETE FROM polyon_components WHERE id = 'litellm'`)
+	s.pool.Exec(ctx, `DELETE FROM polyon_components WHERE id = 'nextcloud'`)
 
 	for _, c := range seedComponents {
 		_, err := s.pool.Exec(ctx, `
