@@ -1,0 +1,107 @@
+# PolyON Module Manifest — PP Odoo
+apiVersion: polyon.io/v1
+kind: Module
+
+metadata:
+  id: odoo
+  name: PP Odoo
+  version: "0.1.0"
+  category: engine
+  description: "ERP/HR/비즈니스 관리 플랫폼"
+  icon: Enterprise
+  vendor: "Triangle.s"
+  license: LGPL-3.0
+
+spec:
+  engine: odoo
+
+  requires:
+    - id: postgresql
+    - id: rustfs
+    - id: samba-dc
+    - id: stalwart
+    - id: redis
+
+  resources:
+    image: jupitertriangles/polyon-odoo:v0.1.0
+    replicas: 1
+    ports:
+      - name: http
+        containerPort: 8069
+    health:
+      path: /web/health
+      port: 8069
+      initialDelay: 60
+      period: 15
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+
+  claims:
+    - type: database
+      config:
+        name: odoo
+    - type: objectStorage
+      config:
+        bucket: odoo
+    - type: directory
+      config:
+        ou: odoo
+    - type: smtp
+      config:
+        domain: odoo
+    - type: cache
+
+  env:
+    DB_HOST: "{{ claims.database.host }}"
+    DB_PORT: "{{ claims.database.port }}"
+    DB_NAME: "{{ claims.database.database }}"
+    DB_USER: "{{ claims.database.user }}"
+    DB_PASSWORD: "{{ claims.database.password }}"
+    AWS_HOST: "{{ claims.objectStorage.endpoint }}"
+    AWS_BUCKET_NAME: "{{ claims.objectStorage.bucket }}"
+    AWS_ACCESS_KEY_ID: "{{ claims.objectStorage.accessKey }}"
+    AWS_SECRET_ACCESS_KEY: "{{ claims.objectStorage.secretKey }}"
+    LDAP_SERVER: "{{ claims.directory.host }}"
+    LDAP_PORT: "{{ claims.directory.port }}"
+    LDAP_BIND_DN: "{{ claims.directory.bindDN }}"
+    LDAP_BIND_PASSWORD: "{{ claims.directory.bindPassword }}"
+    LDAP_BASE_DN: "{{ claims.directory.baseDN }}"
+    SMTP_HOST: "{{ claims.smtp.host }}"
+    SMTP_PORT: "{{ claims.smtp.port }}"
+    SMTP_USER: "{{ claims.smtp.user }}"
+    SMTP_PASSWORD: "{{ claims.smtp.password }}"
+    REDIS_URL: "{{ claims.cache.url }}"
+    ODOO_ADMIN_PASSWORD: "admin"
+    ODOO_DB_FILTER: "^polyon_odoo$"
+    ODOO_LIST_DB: "false"
+    ODOO_PROXY_MODE: "true"
+    ODOO_WORKERS: "2"
+
+  ingress:
+    subdomain: odoo
+    port: 8069
+
+  console:
+    menuGroup: services
+    adminPath: /web
+    pages:
+      - id: backend
+        title: "Odoo 관리"
+        icon: Enterprise
+        path: ""
+        default: true
+
+  portal:
+    menuGroup: apps
+    userPath: /web
+    pages:
+      - id: main
+        title: "비즈니스"
+        icon: Enterprise
+        path: ""
+        default: true
