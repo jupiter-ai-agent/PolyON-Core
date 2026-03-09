@@ -24,10 +24,22 @@ func (r *Registry) Get(name string) (Engine, bool) {
 }
 
 // Health returns a map of engine name → HealthStatus for all registered engines.
+// Health checks run in parallel to avoid sequential timeout accumulation.
 func (r *Registry) Health() map[string]HealthStatus {
-	result := make(map[string]HealthStatus, len(r.engines))
+	type kv struct {
+		name   string
+		status HealthStatus
+	}
+	ch := make(chan kv, len(r.engines))
 	for name, e := range r.engines {
-		result[name] = e.Health()
+		go func(n string, eng Engine) {
+			ch <- kv{n, eng.Health()}
+		}(name, e)
+	}
+	result := make(map[string]HealthStatus, len(r.engines))
+	for range r.engines {
+		pair := <-ch
+		result[pair.name] = pair.status
 	}
 	return result
 }
