@@ -1,187 +1,127 @@
-# ── PP Module Manifest Spec v1 ──
+# PolyON Drive — PRC-based Module Manifest
 apiVersion: polyon.io/v1
 kind: Module
 
-# ── 기본 정보 ──
 metadata:
-  id: nextcloud
-  name: PolyON Drive
-  version: 1.0.0
+  id: drive
+  name: PP Drive
+  version: "0.1.1"
   category: engine
-  icon: Folder
+  description: "파일 스토리지 서비스 (WebDAV, 공유, 휴지통, 버전)"
+  icon: Document
   accent: "#0082C9"
-  description: "파일 스토리지 · 팀 폴더 · 문서 공유"
-  vendor: Triangle.s
-  license: AGPL-3.0
+  vendor: "Triangle.s"
+  license: MIT
 
 spec:
-  engine: nextcloud
+  engine: drive
 
-  # ── 의존성 ──
   requires:
     - id: postgresql
-      reason: "파일 메타데이터 저장"
-    - id: keycloak
-      reason: "SSO 인증 연동"
     - id: rustfs
-      reason: "오브젝트 스토리지 (S3)"
+    - id: samba-dc
 
-  optional:
-    - id: opensearch
-      feature: "파일 전문검색"
-
-  # ── K8s 리소스 ──
   resources:
-    statefulset: true
-    image: nextcloud:30-apache
+    image: jupitertriangles/polyon-drive:v0.1.1
     replicas: 1
-
     ports:
       - name: http
-        containerPort: 80
-
-    env:
-      - name: POSTGRES_HOST
-        value: polyon-db
-      - name: POSTGRES_DB
-        value: nextcloud
-      - name: POSTGRES_USER
-        valueFrom:
-          secretKeyRef:
-            name: polyon-module-nextcloud
-            key: DB_USER
-      - name: POSTGRES_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: polyon-module-nextcloud
-            key: DB_PASSWORD
-      - name: NEXTCLOUD_ADMIN_USER
-        value: admin
-      - name: NEXTCLOUD_ADMIN_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: polyon-module-nextcloud
-            key: ADMIN_PASSWORD
-      - name: NEXTCLOUD_TRUSTED_DOMAINS
-        value: "*"
-      - name: OBJECTSTORE_S3_HOST
-        value: polyon-rustfs
-      - name: OBJECTSTORE_S3_PORT
-        value: "9000"
-      - name: OBJECTSTORE_S3_BUCKET
-        value: nextcloud
-      - name: OBJECTSTORE_S3_KEY
-        valueFrom:
-          secretKeyRef:
-            name: polyon-common-secret
-            key: RUSTFS_ROOT_USER
-      - name: OBJECTSTORE_S3_SECRET
-        valueFrom:
-          secretKeyRef:
-            name: polyon-common-secret
-            key: RUSTFS_ROOT_PASSWORD
-      - name: OBJECTSTORE_S3_SSL
-        value: "false"
-      - name: OBJECTSTORE_S3_USEPATH_STYLE
-        value: "true"
-      - name: OBJECTSTORE_S3_AUTOCREATE
-        value: "true"
-
+        containerPort: 8080
     health:
-      path: /status.php
-      port: 80
-      initialDelay: 60
-      period: 15
-
+      path: /health
+      port: 8080
     resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
-    pvc:
-      - name: data
-        size: 5Gi
-        mountPath: /var/www/html
+  # ── PRC: Platform Resource Claims ──
+  claims:
+    - type: database
+      config:
+        name: drive
+    - type: objectStorage
+      config:
+        bucket: drive
+    - type: directory
+      config:
+        ou: drive
 
-    configMaps: []
+  # ── 환경변수 (PRC credential 템플릿) ──
+  env:
+    DATABASE_URL: "{{ claims.database.url }}"
+    S3_ENDPOINT: "{{ claims.objectStorage.endpoint }}"
+    S3_BUCKET: "{{ claims.objectStorage.bucket }}"
+    S3_ACCESS_KEY: "{{ claims.objectStorage.accessKey }}"
+    S3_SECRET_KEY: "{{ claims.objectStorage.secretKey }}"
+    LDAP_URL: "{{ claims.directory.url }}"
+    LDAP_BIND_DN: "{{ claims.directory.bindDN }}"
+    LDAP_BIND_PASSWORD: "{{ claims.directory.bindPassword }}"
+    LDAP_BASE_DN: "{{ claims.directory.baseDN }}"
+    S3_REGION: "us-east-1"
+    RUST_LOG: "info"
 
-  # ── 네트워크 ──
   ingress:
     subdomain: drive
-    port: 80
-    annotations: {}
+    port: 8080
 
-  # ── DB 프로비저닝 ──
-  database:
-    create: true
-    name: nextcloud
-    user: nextcloud
-    migrations: auto
+  # ── Console Admin 페이지 ──
+  console:
+    menuGroup: services
+    adminPath: /admin
+    pages:
+      - id: overview
+        title: "개요"
+        icon: Dashboard
+        path: overview
+        default: true
+      - id: storage
+        title: "스토리지"
+        icon: DataBase
+        path: storage
+      - id: quota
+        title: "할당량"
+        icon: Meter
+        path: quota
+      - id: activity
+        title: "활동 로그"
+        icon: Activity
+        path: activity
+      - id: settings
+        title: "설정"
+        icon: Settings
+        path: settings
 
-  # ── AD/LDAP 자동 바인딩 ──
-  ldap:
-    bind: true
-    engine: nextcloud
-    settings:
-      ldapUserFilter: "(&(objectClass=user)(!(objectClass=computer))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
-      ldapLoginFilter: "(&(objectClass=user)(|(sAMAccountName=%uid)(mail=%uid)))"
-      ldapUserName: sAMAccountName
-      ldapUserDisplayName: displayName
-      ldapEmailAttribute: mail
-      ldapGroupFilter: "(&(objectClass=group))"
+  # ── Portal 사원 페이지 ──
+  portal:
+    menuGroup: apps
+    userPath: /
+    pages:
+      - id: files
+        title: "드라이브"
+        icon: Folder
+        path: ""
+        default: true
+      - id: shared
+        title: "공유"
+        icon: Share
+        path: shared
+      - id: recent
+        title: "최근"
+        icon: RecentlyViewed
+        path: recent
+      - id: favorites
+        title: "즐겨찾기"
+        icon: Star
+        path: favorites
+      - id: trash
+        title: "휴지통"
+        icon: TrashCan
+        path: trash
 
-  # ── OIDC 클라이언트 ──
-  oidc:
-    create: true
-    realm: polyon
-    clientId: nextcloud
-    publicClient: false
-    redirectUris:
-      - "https://drive.cmars.com/*"
-    webOrigins:
-      - "https://drive.cmars.com"
-
-  # ── Admin Console UI ──
-  admin:
-    nav:
-      title: Drive
-      section: SERVICES
-      icon: Folder
-      defaultPath: /drive
-      sortOrder: 30
-      items:
-        - label: 개요
-          path: /drive
-          icon: Folder
-        - type: divider
-        - label: 팀 폴더
-          path: /drive/folders
-          icon: FolderShared
-        - label: 사용자 관리
-          path: /drive/users
-          icon: User
-        - type: divider
-        - label: 설정
-          path: /drive/settings
-          icon: Settings
-
-    ui:
-      entry: entry.js
-      pages:
-        - path: /drive
-          component: DrivePage
-        - path: /drive/folders
-          component: DriveFoldersPage
-        - path: /drive/users
-          component: DriveUsersPage
-        - path: /drive/settings
-          component: DriveSettingsPage
-
-  # ── 삭제 정책 ──
   uninstall:
     confirm: true
     dataPolicy: ask
-    resources:
-      databases: [nextcloud]
-      pvcs: [polyon-nextcloud-data]
-      oidcClients: [nextcloud]
-      secrets: [polyon-module-nextcloud]
