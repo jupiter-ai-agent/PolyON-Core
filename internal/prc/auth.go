@@ -30,7 +30,7 @@ func (p *AuthProvider) DependsOn() []string { return nil }
 
 func (p *AuthProvider) Provision(ctx context.Context, claim Claim) (Credentials, error) {
 	clientID := claim.ConfigString("clientId", claim.ModuleID)
-	accessType := claim.ConfigString("accessType", "public")
+	accessType := claim.ConfigString("accessType", "confidential") // 서버앱이 대다수
 
 	// 1. Admin 토큰 획득
 	token, err := p.getAdminToken(ctx)
@@ -50,20 +50,25 @@ func (p *AuthProvider) Provision(ctx context.Context, claim Claim) (Credentials,
 		log.Info().Str("clientId", clientID).Str("accessType", accessType).Msg("PRC: Keycloak OIDC client provisioned")
 	}
 
-	// 4. Credential 반환
+	// 4. Credential 반환 — 내부/외부 URL 분리
+	// authEndpoint: 브라우저 리다이렉트 → 외부 URL
+	// tokenEndpoint, jwksUri: 서버 백채널 → 내부 URL (Pod→KC)
 	authHost := p.AuthDomain
 	if authHost == "" {
-		authHost = "auth." + p.BaseDomain
+		authHost = "sso." + p.BaseDomain
 	}
-	issuer := fmt.Sprintf("https://%s/realms/%s", authHost, p.Realm)
-	oidcBase := issuer + "/protocol/openid-connect"
+	externalIssuer := fmt.Sprintf("https://%s/realms/%s", authHost, p.Realm)
+	externalOIDC := externalIssuer + "/protocol/openid-connect"
+	internalOIDC := fmt.Sprintf("%s/realms/%s/protocol/openid-connect", p.AdminURL, p.Realm)
 
 	creds := Credentials{
-		"issuer":        issuer,
-		"clientId":      clientID,
-		"authEndpoint":  oidcBase + "/auth",
-		"tokenEndpoint": oidcBase + "/token",
-		"jwksUri":       oidcBase + "/certs",
+		"issuer":                 externalIssuer,
+		"clientId":               clientID,
+		"authEndpoint":           externalOIDC + "/auth",           // 외부 (브라우저용)
+		"tokenEndpoint":          internalOIDC + "/token",          // 내부 (서버용)
+		"tokenEndpointExternal":  externalOIDC + "/token",          // 외부 (참고용)
+		"jwksUri":                internalOIDC + "/certs",           // 내부 (서버용)
+		"jwksUriExternal":        externalOIDC + "/certs",           // 외부 (참고용)
 	}
 
 	// confidential 타입이면 client secret 가져오기
@@ -214,10 +219,14 @@ func (p *AuthProvider) createClient(ctx context.Context, token, clientID, access
 		"webOrigins":               webOrigins,
 	}
 
-	// PKCE for public clients
+	// PKCE: public → S256 강제, confidential → 해제
 	if accessType == "public" {
 		clientBody["attributes"] = map[string]string{
 			"pkce.code.challenge.method": "S256",
+		}
+	} else {
+		clientBody["attributes"] = map[string]string{
+			"pkce.code.challenge.method": "", // 해제 — 서버가 client_secret으로 인증
 		}
 	}
 

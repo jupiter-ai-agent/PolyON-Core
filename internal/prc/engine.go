@@ -3,6 +3,7 @@ package prc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 
@@ -257,6 +258,174 @@ func (e *Engine) GetClaimsForModule(ctx context.Context, moduleID string) ([]map
 		})
 	}
 	return claims, nil
+}
+
+// ── Dashboard Query Methods ──
+
+// ProviderInfo represents a Foundation provider with claim statistics.
+type ProviderInfo struct {
+	Type       string `json:"type"`
+	Service    string `json:"service"`
+	Status     string `json:"status"`
+	ClaimCount int    `json:"claimCount"`
+	BoundCount int    `json:"boundCount"`
+}
+
+// ClaimInfo represents a module claim with metadata.
+type ClaimInfo struct {
+	ID         string          `json:"id"`
+	ModuleID   string          `json:"moduleId"`
+	ModuleName string          `json:"moduleName"`
+	ClaimType  string          `json:"claimType"`
+	Config     json.RawMessage `json:"config"`
+	Status     string          `json:"status"`
+	Error      *string         `json:"error,omitempty"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
+}
+
+// SagaLogEntry represents a provisioning history entry.
+type SagaLogEntry struct {
+	ID         string    `json:"id"`
+	ModuleID   string    `json:"moduleId"`
+	Action     string    `json:"action"`
+	ClaimType  string    `json:"claimType"`
+	Status     string    `json:"status"`
+	DurationMs *int      `json:"durationMs,omitempty"`
+	Error      *string   `json:"error,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// ListProviders returns all Foundation providers with claim counts.
+func (e *Engine) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
+	// Provider 정의
+	defs := []struct{ Type, Service string }{
+		{"database", "PostgreSQL"},
+		{"cache", "Redis"},
+		{"search", "OpenSearch"},
+		{"objectStorage", "RustFS"},
+		{"directory", "Samba AD DC"},
+		{"smtp", "Stalwart Mail"},
+		{"git", "Gitea"},
+		{"ai", "LiteLLM"},
+		{"auth", "Keycloak"},
+	}
+
+	counts := map[string][2]int{} // [total, bound]
+	rows, err := e.pool.Query(ctx,
+		`SELECT claim_type, COUNT(*), 
+		        SUM(CASE WHEN status IN ('bound','provisioned') THEN 1 ELSE 0 END)
+		 FROM module_claims WHERE status != 'removed'
+		 GROUP BY claim_type`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var ct string
+			var total, bound int
+			rows.Scan(&ct, &total, &bound)
+			counts[ct] = [2]int{total, bound}
+		}
+	}
+
+	result := make([]ProviderInfo, len(defs))
+	for i, d := range defs {
+		c := counts[d.Type]
+		result[i] = ProviderInfo{
+			Type:       d.Type,
+			Service:    d.Service,
+			Status:     "healthy",
+			ClaimCount: c[0],
+			BoundCount: c[1],
+		}
+	}
+	return result, nil
+}
+
+// ListClaims returns claims with optional filters.
+func (e *Engine) ListClaims(ctx context.Context, statusFilter, typeFilter, moduleFilter string) ([]ClaimInfo, error) {
+	query := `SELECT mc.id, mc.module_id, mc.claim_type, mc.claim_config, mc.status,
+	                 mc.error_message, mc.created_at, mc.updated_at,
+	                 COALESCE(pa.name, mc.module_id)
+	          FROM module_claims mc
+	          LEFT JOIN polyon_apps pa ON pa.id = mc.module_id
+	          WHERE mc.status != 'removed'`
+	args := []any{}
+	idx := 1
+
+	if statusFilter != "" {
+		query += fmt.Sprintf(" AND mc.status = $%d", idx)
+		args = append(args, statusFilter)
+		idx++
+	}
+	if typeFilter != "" {
+		query += fmt.Sprintf(" AND mc.claim_type = $%d", idx)
+		args = append(args, typeFilter)
+		idx++
+	}
+	if moduleFilter != "" {
+		query += fmt.Sprintf(" AND mc.module_id = $%d", idx)
+		args = append(args, moduleFilter)
+		idx++
+	}
+	query += " ORDER BY mc.created_at DESC"
+
+	rows, err := e.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []ClaimInfo
+	for rows.Next() {
+		var c ClaimInfo
+		if err := rows.Scan(&c.ID, &c.ModuleID, &c.ClaimType, &c.Config, &c.Status,
+			&c.Error, &c.CreatedAt, &c.UpdatedAt, &c.ModuleName); err != nil {
+			continue
+		}
+		items = append(items, c)
+	}
+	return items, nil
+}
+
+// GetProviderResources returns claims for a specific provider type.
+func (e *Engine) GetProviderResources(ctx context.Context, providerType string) ([]ClaimInfo, error) {
+	return e.ListClaims(ctx, "", providerType, "")
+}
+
+// ListSagaLog returns provisioning history.
+func (e *Engine) ListSagaLog(ctx context.Context, moduleFilter string, limit int) ([]SagaLogEntry, error) {
+	query := `SELECT id, module_id, action, claim_type, status, duration_ms, error_message, created_at
+	          FROM claim_saga_log WHERE 1=1`
+	args := []any{}
+	idx := 1
+
+	if moduleFilter != "" {
+		query += fmt.Sprintf(" AND module_id = $%d", idx)
+		args = append(args, moduleFilter)
+		idx++
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", idx)
+	args = append(args, limit)
+
+	rows, err := e.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []SagaLogEntry
+	for rows.Next() {
+		var s SagaLogEntry
+		if err := rows.Scan(&s.ID, &s.ModuleID, &s.Action, &s.ClaimType, &s.Status,
+			&s.DurationMs, &s.Error, &s.CreatedAt); err != nil {
+			continue
+		}
+		items = append(items, s)
+	}
+	return items, nil
 }
 
 func envOr(key, fallback string) string {

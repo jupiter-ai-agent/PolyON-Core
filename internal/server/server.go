@@ -365,6 +365,7 @@ func (s *Server) buildRouter() {
 		api.RegisterInfraServices(r, deps)
 		api.RegisterComponents(r, deps)
 		api.RegisterModules(r, deps)
+		api.RegisterPRC(r, deps)
 		api.RegisterMirrors(r, deps)
 		api.RegisterSettingsDomain(r, deps)
 		api.RegisterBackup(r, deps)

@@ -54,7 +54,7 @@ spec:
     - type: auth
       config:
         clientId: odoo
-        accessType: public
+        accessType: confidential
         redirectUris:
           - "https://odoo.{{ baseDomain }}/*"
           - "https://console.{{ baseDomain }}/modules/odoo/*"
@@ -80,6 +80,7 @@ spec:
     # Keycloak OIDC SSO (PP 제1원칙)
     OIDC_ISSUER: "{{ claims.auth.issuer }}"
     OIDC_CLIENT_ID: "{{ claims.auth.clientId }}"
+    OIDC_CLIENT_SECRET: "{{ claims.auth.clientSecret }}"
     OIDC_AUTH_ENDPOINT: "{{ claims.auth.authEndpoint }}"
     OIDC_TOKEN_ENDPOINT: "{{ claims.auth.tokenEndpoint }}"
     OIDC_JWKS_URI: "{{ claims.auth.jwksUri }}"
