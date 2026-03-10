@@ -754,6 +754,20 @@ func (c *Client) PatchSecret(ctx context.Context, secretName string, data map[st
 }
 
 // ExecInPod runs a command in a pod (best-effort, no output capture).
+// GetDeployment checks if a deployment exists for the given module ID.
+func (c *Client) GetDeployment(ctx context.Context, moduleID string) (*appsv1.Deployment, error) {
+	if c == nil || c.cs == nil {
+		return nil, fmt.Errorf("k8s client not initialized")
+	}
+
+	deploymentName := fmt.Sprintf("polyon-%s", moduleID)
+	deployment, err := c.cs.AppsV1().Deployments(c.namespace).Get(ctx, deploymentName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return deployment, nil
+}
+
 // IsServiceAvailable checks if a Foundation service is running in K8s.
 // Looks for service named "polyon-{id}" with at least one ready endpoint.
 func (c *Client) IsServiceAvailable(ctx context.Context, serviceID string) bool {

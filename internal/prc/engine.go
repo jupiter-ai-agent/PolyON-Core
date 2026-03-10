@@ -138,6 +138,10 @@ func MigrateSchema(ctx context.Context, pool *pgxpool.Pool) {
 			module_id    VARCHAR(64),
 			allocated_at TIMESTAMPTZ
 		)`,
+		// FK CASCADE 제약조건 추가 (module_claims)
+		`ALTER TABLE module_claims 
+		 ADD CONSTRAINT IF NOT EXISTS fk_module_claims_module 
+		 FOREIGN KEY (module_id) REFERENCES polyon_modules(id) ON DELETE CASCADE`,
 	}
 
 	for _, ddl := range ddls {

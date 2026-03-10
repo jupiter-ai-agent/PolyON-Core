@@ -101,6 +101,10 @@ func (s *Store) migrateModules() {
 		`CREATE INDEX IF NOT EXISTS idx_module_nav_section ON polyon_module_nav(section)`,
 		`CREATE INDEX IF NOT EXISTS idx_module_events_module ON polyon_module_events(module_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_module_events_created ON polyon_module_events(created_at DESC)`,
+		// FK CASCADE 제약조건 추가 (polyon_module_events)
+		`ALTER TABLE polyon_module_events 
+		 ADD CONSTRAINT IF NOT EXISTS fk_module_events_module 
+		 FOREIGN KEY (module_id) REFERENCES polyon_modules(id) ON DELETE CASCADE`,
 	}
 
 	for _, migration := range migrations {
@@ -209,6 +213,17 @@ func (s *Store) UpdateModuleStatus(ctx context.Context, id, status string) error
 func (s *Store) DeleteModule(ctx context.Context, id string) error {
 	query := `DELETE FROM polyon_modules WHERE id = $1`
 	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+// DeleteModuleFull removes a module and all related data (apps, claims, events).
+// This ensures full cleanup including polyon_apps table which doesn't have FK CASCADE.
+func (s *Store) DeleteModuleFull(ctx context.Context, id string) error {
+	// polyon_apps 삭제 (FK CASCADE가 없으므로 수동 삭제)
+	_, _ = s.pool.Exec(ctx, "DELETE FROM polyon_apps WHERE id = $1", id)
+	
+	// polyon_modules 삭제 (CASCADE로 module_nav, module_claims, module_events 자동 삭제)
+	_, err := s.pool.Exec(ctx, "DELETE FROM polyon_modules WHERE id = $1", id)
 	return err
 }
 

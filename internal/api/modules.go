@@ -277,8 +277,32 @@ func installModule(d *Deps) http.HandlerFunc {
 		}
 
 		if moduleRecord.Status == "active" {
-			httputil.RespondError(w, http.StatusConflict, "ALREADY_INSTALLED", "이미 설치된 모듈입니다")
-			return
+			// 고아 상태 감지: K8s에서 실제 deployment 확인
+			_, err := d.Kube.GetDeployment(r.Context(), id)
+			if err != nil {
+				// K8s에 deployment가 없음 → 고아 상태, DB 정리 후 재설치 허용
+				log.Warn().Str("module_id", id).Msg("Module marked as active but no K8s deployment found. Cleaning up orphaned state.")
+				
+				// 고아 상태 정리
+				if err := d.Store.UpdateModuleStatus(r.Context(), id, "available"); err != nil {
+					log.Error().Err(err).Msg("Failed to reset module status")
+				}
+				
+				// 관련 레코드들 정리
+				if err := d.Store.DeleteModuleFull(r.Context(), id); err != nil {
+					log.Error().Err(err).Msg("Failed to clean up orphaned module data")
+				}
+				
+				// 이벤트 기록
+				d.Store.CreateModuleEvent(r.Context(), id, "orphan_cleanup", "completed",
+					"Cleaned up orphaned module state (DB active but K8s deployment missing)", nil)
+				
+				// 정상 설치 진행을 위해 다시 모듈 레코드 확인 (catalog 자동 등록 로직 재실행)
+			} else {
+				// 실제로 K8s에서 실행 중 → 409 유지
+				httputil.RespondError(w, http.StatusConflict, "ALREADY_INSTALLED", "이미 설치된 모듈입니다")
+				return
+			}
 		}
 
 		// 2. manifest에서 spec 파싱
@@ -625,8 +649,8 @@ func uninstallModule(d *Deps) http.HandlerFunc {
 			log.Warn().Err(err).Msg("uninstallModule: failed to revert app base_status")
 		}
 
-		// 4. module 레코드 삭제
-		if err := d.Store.DeleteModule(r.Context(), id); err != nil {
+		// 4. module 레코드 및 관련 데이터 완전 삭제
+		if err := d.Store.DeleteModuleFull(r.Context(), id); err != nil {
 			log.Error().Err(err).Msg("uninstallModule: failed to delete module record")
 			httputil.RespondError(w, http.StatusInternalServerError, "DB_ERROR", "모듈 레코드 삭제 실패")
 			return
