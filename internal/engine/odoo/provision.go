@@ -26,13 +26,34 @@ type SyncResult struct {
 	Errors      []string
 }
 
+// GetOAuthProviderID returns the Odoo id of the PolyON SSO OAuth provider.
+func (c *Client) GetOAuthProviderID(clientID string) (int, error) {
+	records, err := c.SearchRead(
+		"auth.oauth.provider",
+		[]interface{}{[]interface{}{"client_id", "=", clientID}},
+		[]string{"id"},
+		0, 1,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("search oauth provider: %w", err)
+	}
+	if len(records) == 0 {
+		return 0, fmt.Errorf("oauth provider not found for client_id=%s", clientID)
+	}
+	id, ok := records[0]["id"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected provider id type")
+	}
+	return int(id), nil
+}
+
 // SyncUsers synchronises AD users into Odoo res.users.
 //
 // Rules:
-//   - AD user present, not in Odoo → create
+//   - AD user present, not in Odoo → create with OAuth provider
 //   - AD user present, already in Odoo → update (name, email, department, title)
 //   - AD user disabled → deactivate in Odoo
-func (c *Client) SyncUsers(users []ADUser) (*SyncResult, error) {
+func (c *Client) SyncUsers(users []ADUser, oauthProviderID int) (*SyncResult, error) {
 	result := &SyncResult{}
 
 	// Fetch all existing Odoo users (login → id/active map)
@@ -96,19 +117,14 @@ func (c *Client) SyncUsers(users []ADUser) (*SyncResult, error) {
 				result.Updated++
 			}
 		} else {
-			// Generate a random password — AD auth is used in practice, this is just a placeholder
-			pass, err := randomPassword(24)
-			if err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("gen password for %s: %v", u.Username, err))
-				continue
-			}
-
 			createVals := map[string]interface{}{
-				"name":     name,
-				"login":    u.Username,
-				"email":    u.Email,
-				"active":   true,
-				"password": pass,
+				"name":              name,
+				"login":             u.Username,
+				"email":             u.Email,
+				"active":            true,
+				"oauth_provider_id": oauthProviderID,
+				"oauth_uid":         u.Username, // Keycloak sub = sAMAccountName
+				// password 필드 없음 — OAuth 전용 유저
 			}
 			if u.Title != "" {
 				createVals["function"] = u.Title
@@ -127,12 +143,14 @@ func (c *Client) SyncUsers(users []ADUser) (*SyncResult, error) {
 
 // fetchExistingUsers returns a map of login → record for all non-system Odoo users.
 func (c *Client) fetchExistingUsers() (map[string]map[string]interface{}, error) {
-	// active_test=False to include deactivated users
-	records, err := c.SearchRead(
+	// active_test=False: 비활성 사용자도 포함
+	ctx := map[string]interface{}{"polyon_sync": true, "active_test": false}
+	records, err := c.SearchReadWithContext(
 		"res.users",
 		[]interface{}{[]interface{}{"share", "=", false}}, // internal users only
 		[]string{"id", "login", "name", "email", "active"},
 		0, 0,
+		ctx,
 	)
 	if err != nil {
 		return nil, err
@@ -150,13 +168,15 @@ func (c *Client) fetchExistingUsers() (map[string]map[string]interface{}, error)
 
 // createUser creates a new res.users record.
 func (c *Client) createUser(vals map[string]interface{}) error {
-	_, err := c.Call("res.users", "create", []interface{}{vals}, nil)
+	ctx := map[string]interface{}{"polyon_sync": true}
+	_, err := c.CallWithContext("res.users", "create", []interface{}{vals}, nil, ctx)
 	return err
 }
 
 // updateUser writes vals into an existing res.users record.
 func (c *Client) updateUser(id int, vals map[string]interface{}) error {
-	_, err := c.Call("res.users", "write", []interface{}{[]int{id}, vals}, nil)
+	ctx := map[string]interface{}{"polyon_sync": true}
+	_, err := c.CallWithContext("res.users", "write", []interface{}{[]int{id}, vals}, nil, ctx)
 	return err
 }
 

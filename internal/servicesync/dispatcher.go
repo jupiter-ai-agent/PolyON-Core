@@ -8,6 +8,7 @@ import (
 
 	"github.com/triangles/polyon-core/internal/config"
 	"github.com/triangles/polyon-core/internal/engine/mattermost"
+	"github.com/triangles/polyon-core/internal/engine/odoo"
 	"github.com/triangles/polyon-core/internal/store"
 )
 
@@ -23,18 +24,21 @@ type SyncResult struct {
 	ChatErr string `json:"chat_error,omitempty"`
 	MailOK  bool   `json:"mail_ok"`
 	MailErr string `json:"mail_error,omitempty"`
+	OdooOK  bool   `json:"odoo_ok"`
+	OdooErr string `json:"odoo_error,omitempty"`
 }
 
 // Dispatcher dispatches sync events to downstream services.
 type Dispatcher struct {
 	mm    *mattermost.Client
+	odoo  *odoo.Client
 	store *store.Store
 	cfg   *config.Config
 }
 
 // New creates a new Dispatcher.
-func New(mm *mattermost.Client, st *store.Store, cfg *config.Config) *Dispatcher {
-	return &Dispatcher{mm: mm, store: st, cfg: cfg}
+func New(mm *mattermost.Client, odoo *odoo.Client, st *store.Store, cfg *config.Config) *Dispatcher {
+	return &Dispatcher{mm: mm, odoo: odoo, store: st, cfg: cfg}
 }
 
 // OnUserCreated is called after an AD user is successfully created.

@@ -232,7 +232,7 @@ func New(cfg *config.Config) (*Server, error) {
 	log.Info().Str("url", cfg.OpenClawURL).Msg("OpenClaw engine registered")
 
 	// Service sync dispatcher
-	syncDisp := servicesync.New(mattermostCl, st, cfg)
+	syncDisp := servicesync.New(mattermostCl, odooCl, st, cfg)
 
 	s := &Server{
 		cfg:              cfg,

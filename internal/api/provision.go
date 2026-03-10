@@ -237,7 +237,13 @@ func handleProvisionOdooSync(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		result, err := d.OdooClient.SyncUsers(req.Users)
+		// OAuth Provider ID 조회 (polyon_oidc addon이 등록한 Keycloak provider)
+		oauthProviderID := 0
+		if pid, err := d.OdooClient.GetOAuthProviderID("odoo"); err == nil {
+			oauthProviderID = pid
+		}
+
+		result, err := d.OdooClient.SyncUsers(req.Users, oauthProviderID)
 		if err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "SYNC_ERROR", "sync users: "+err.Error())
 			return

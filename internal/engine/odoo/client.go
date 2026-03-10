@@ -156,6 +156,15 @@ func (c *Client) Call(model, method string, args []interface{}, kwargs map[strin
 	return result, nil
 }
 
+// CallWithContext는 Odoo context를 kwargs에 포함하여 호출한다.
+func (c *Client) CallWithContext(model, method string, args []interface{}, kwargs map[string]interface{}, ctx map[string]interface{}) (interface{}, error) {
+	if kwargs == nil {
+		kwargs = map[string]interface{}{}
+	}
+	kwargs["context"] = ctx
+	return c.Call(model, method, args, kwargs)
+}
+
 // SearchRead searches model records matching domain and returns the given fields.
 func (c *Client) SearchRead(model string, domain []interface{}, fields []string, offset, limit int) ([]map[string]interface{}, error) {
 	kwargs := map[string]interface{}{
@@ -164,6 +173,29 @@ func (c *Client) SearchRead(model string, domain []interface{}, fields []string,
 		"limit":  limit,
 	}
 	result, err := c.Call(model, "search_read", []interface{}{domain}, kwargs)
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("re-marshal result: %w", err)
+	}
+	var records []map[string]interface{}
+	if err := json.Unmarshal(raw, &records); err != nil {
+		return nil, fmt.Errorf("decode records: %w", err)
+	}
+	return records, nil
+}
+
+// SearchReadWithContext searches model records with context.
+func (c *Client) SearchReadWithContext(model string, domain []interface{}, fields []string, offset, limit int, ctx map[string]interface{}) ([]map[string]interface{}, error) {
+	kwargs := map[string]interface{}{
+		"fields": fields,
+		"offset": offset,
+		"limit":  limit,
+	}
+	result, err := c.CallWithContext(model, "search_read", []interface{}{domain}, kwargs, ctx)
 	if err != nil {
 		return nil, err
 	}
