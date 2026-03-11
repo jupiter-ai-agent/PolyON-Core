@@ -165,9 +165,11 @@ func buildProviders(pool *pgxpool.Pool) []ResourceProvider {
 	providers := []ResourceProvider{
 		// 1. Database (PostgreSQL)
 		&DatabaseProvider{
-			Pool: pool,
-			Host: envOr("PG_HOST", "polyon-db"),
-			Port: envOr("PG_PORT", "5432"),
+			Pool:          pool,
+			Host:          envOr("PG_HOST", "polyon-db"),
+			Port:          envOr("PG_PORT", "5432"),
+			AdminUser:     envOr("PG_ADMIN_USER", "postgres"),
+			AdminPassword: envOr("PG_ADMIN_PASSWORD", ""),
 		},
 		// 2. Object Storage (RustFS)
 		&ObjectStorageProvider{

@@ -13,9 +13,11 @@ import (
 
 // DatabaseProvider provisions PostgreSQL databases for modules.
 type DatabaseProvider struct {
-	Pool *pgxpool.Pool // admin (superuser) connection pool
-	Host string        // e.g., "polyon-db"
-	Port string        // e.g., "5432"
+	Pool          *pgxpool.Pool // admin (superuser) connection pool
+	Host          string        // e.g., "polyon-db"
+	Port          string        // e.g., "5432"
+	AdminUser     string        // e.g., "postgres"
+	AdminPassword string        // admin password for cross-database connections
 }
 
 func (p *DatabaseProvider) Type() string        { return "database" }
@@ -56,12 +58,23 @@ func (p *DatabaseProvider) Provision(ctx context.Context, claim Claim) (Credenti
 
 	// PG 15+: public schema requires explicit GRANT
 	grantPool, gErr := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		"polyon", "", p.Host, p.Port, dbName))
+		p.AdminUser, p.AdminPassword, p.Host, p.Port, dbName))
 	if gErr == nil {
 		defer grantPool.Close()
-		grantPool.Exec(ctx, fmt.Sprintf("GRANT ALL ON SCHEMA public TO %s", user))
-		grantPool.Exec(ctx, fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %s", user))
-		grantPool.Exec(ctx, fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %s", user))
+		_, err = grantPool.Exec(ctx, fmt.Sprintf("GRANT ALL ON SCHEMA public TO %s", user))
+		if err != nil {
+			return nil, fmt.Errorf("grant schema public to %s: %w", user, err)
+		}
+		_, err = grantPool.Exec(ctx, fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %s", user))
+		if err != nil {
+			return nil, fmt.Errorf("alter default privileges tables to %s: %w", user, err)
+		}
+		_, err = grantPool.Exec(ctx, fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %s", user))
+		if err != nil {
+			return nil, fmt.Errorf("alter default privileges sequences to %s: %w", user, err)
+		}
+	} else {
+		return nil, fmt.Errorf("connect to new database %s for grant: %w", dbName, gErr)
 	}
 
 	// 3. Extensions
