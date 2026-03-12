@@ -30,7 +30,7 @@ type odooModuleRecord struct {
 	Author      string      `json:"author"`
 	Description string      `json:"description"`
 	CategoryID  interface{} `json:"category_id"`
-	IconData    string      `json:"icon_data"`
+	IconData    string      `json:"icon_image"`
 }
 
 // listAppEngineModules returns Odoo application modules (all states by default).
@@ -50,7 +50,7 @@ func listAppEngineModules(d *Deps) http.HandlerFunc {
 			[]interface{}{"application", "=", true},
 		}
 
-		fields := []string{"id", "name", "shortdesc", "state", "author", "description", "category_id", "icon_data"}
+		fields := []string{"id", "name", "shortdesc", "state", "author", "description", "category_id", "icon_image"}
 		records, err := d.OdooClient.SearchRead("ir.module.module", domain, fields, 0, 500)
 		if err != nil {
 			log.Error().Err(err).Msg("listAppEngineModules: SearchRead failed")
@@ -83,7 +83,7 @@ func listAppEngineModules(d *Deps) http.HandlerFunc {
 				m.Description = v
 			}
 			m.CategoryID = rec["category_id"]
-			if v, ok := rec["icon_data"].(string); ok {
+			if v, ok := rec["icon_image"].(string); ok {
 				m.IconData = v
 			}
 
