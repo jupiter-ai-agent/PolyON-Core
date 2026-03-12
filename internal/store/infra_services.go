@@ -131,7 +131,7 @@ var seedInfraServices = []InfraService{
 		Protocol: "http", Category: "engine", EntryPoint: "", Enabled: true,
 	},
 	{
-		ID: "odoo", Name: "Odoo", Host: "polyon-odoo", Port: 8069,
+		ID: "odoo", Name: "Odoo", Host: "polyon-appengine", Port: 8069,
 		Protocol: "http", Category: "engine", EntryPoint: "", Enabled: true,
 	},
 	{

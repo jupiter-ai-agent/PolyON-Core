@@ -192,7 +192,7 @@ func Load() (*Config, error) {
 	c.CoreURL = envOr("CORE_URL", "http://polyon-core:8000")
 	c.PrometheusURL = envOr("PROMETHEUS_URL", "http://polyon-prometheus:9090")
 	c.GiteaURL = envOr("GITEA_URL", "http://polyon-gitea:3000")
-	c.OdooURL = envOr("ODOO_URL", "http://polyon-odoo:8069")
+	c.OdooURL = envOr("ODOO_URL", "http://polyon-appengine:8069")
 	c.AffineURL = envOr("AFFINE_URL", "http://polyon-wiki:3010")
 	c.LiteLLMURL = envOr("LITELLM_URL", "http://polyon-ai:4000")
 	c.OnlyOfficeURL = envOr("ONLYOFFICE_URL", "http://polyon-office:80")
