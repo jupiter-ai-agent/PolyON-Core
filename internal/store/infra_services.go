@@ -205,7 +205,10 @@ func (s *Store) migrateInfraServices() {
 		_, err := s.pool.Exec(ctx, `
 			INSERT INTO polyon_infra_services (id, name, host, port, protocol, category, entrypoint, path_rules, enabled)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			ON CONFLICT (id) DO NOTHING
+			ON CONFLICT (id) DO UPDATE SET
+			  host = EXCLUDED.host,
+			  port = EXCLUDED.port,
+			  name = EXCLUDED.name
 		`, svc.ID, svc.Name, svc.Host, svc.Port, svc.Protocol,
 			svc.Category, svc.EntryPoint, svc.PathRules, svc.Enabled)
 		if err != nil {
