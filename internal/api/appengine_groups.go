@@ -44,7 +44,7 @@ func listADGroups(d *Deps) http.HandlerFunc {
 		domain := []interface{}{
 			[]interface{}{"comment", "like", "[AD Group]"},
 		}
-		fields := []string{"id", "name", "comment", "users"}
+		fields := []string{"id", "name", "comment", "user_ids"}
 
 		records, err := d.OdooClient.SearchRead("res.groups", domain, fields, 0, 0)
 		if err != nil {
@@ -67,8 +67,8 @@ func listADGroups(d *Deps) http.HandlerFunc {
 			if v, ok := rec["comment"].(string); ok {
 				g.Comment = v
 			}
-			// users 필드: list of user IDs
-			if v, ok := rec["users"]; ok {
+			// user_ids 필드: list of user IDs (Odoo 19)
+			if v, ok := rec["user_ids"]; ok {
 				switch x := v.(type) {
 				case []interface{}:
 					g.UserCount = len(x)
