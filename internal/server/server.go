@@ -467,6 +467,16 @@ func (s *Server) Start() error {
 		}()
 	}
 
+	// Start K8s image version syncer (no-op when not running in-cluster)
+	if s.store != nil && s.kube != nil {
+		if vs, err := kube.NewVersionSyncer(s.kube, s.store); err != nil {
+			log.Warn().Err(err).Msg("VersionSyncer init failed")
+		} else if vs != nil {
+			go vs.Run(context.Background())
+			log.Info().Msg("K8s version syncer started")
+		}
+	}
+
 	return s.http.ListenAndServe()
 }
 
