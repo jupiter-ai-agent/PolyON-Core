@@ -376,6 +376,7 @@ func (s *Server) buildRouter() {
 		api.RegisterWorkstream(r, deps)
 		api.RegisterAppEngineUsers(r, deps)
 		api.RegisterAppEngineModules(r, deps)
+		api.RegisterAppEngineGroups(r, deps)
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})
