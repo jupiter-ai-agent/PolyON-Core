@@ -370,6 +370,8 @@ func (s *Server) buildRouter() {
 		api.RegisterSettingsDomain(r, deps)
 		api.RegisterBackup(r, deps)
 		api.RegisterWorkstream(r, deps)
+		api.RegisterAppEngineUsers(r, deps)
+		api.RegisterAppEngineModules(r, deps)
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})
