@@ -177,7 +177,11 @@ func New(cfg *config.Config) (*Server, error) {
 	if odooPassword == "" {
 		odooPassword = "admin"
 	}
-	odooCl := odooEngine.NewClient(cfg.OdooURL, "odoo", "admin", odooPassword)
+	odooDB := os.Getenv("ODOO_DB")
+	if odooDB == "" {
+		odooDB = "polyon_erp"
+	}
+	odooCl := odooEngine.NewClient(cfg.OdooURL, odooDB, "admin", odooPassword)
 	reg := engine.NewRegistry()
 	reg.Register(odooEngine.NewEngine(odooCl))
 	log.Info().Str("url", cfg.OdooURL).Msg("Odoo engine registered")

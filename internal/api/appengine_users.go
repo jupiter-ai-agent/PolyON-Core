@@ -29,7 +29,7 @@ type odooUserRecord struct {
 	Login    string      `json:"login"`
 	Email    interface{} `json:"email"`
 	Active   bool        `json:"active"`
-	GroupIDs interface{} `json:"groups_id"`
+	GroupIDs interface{} `json:"group_ids"`
 }
 
 // odooGroupRecord maps Odoo res.groups fields.
@@ -59,7 +59,7 @@ func toOdooUser(m map[string]interface{}) odooUserRecord {
 	if v, ok := m["active"].(bool); ok {
 		u.Active = v
 	}
-	u.GroupIDs = m["groups_id"]
+	u.GroupIDs = m["group_ids"]
 	return u
 }
 
@@ -89,7 +89,7 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 		}
 
 		domain := []interface{}{[]interface{}{"share", "=", false}}
-		fields := []string{"id", "name", "login", "email", "active", "groups_id"}
+		fields := []string{"id", "name", "login", "email", "active", "group_ids"}
 
 		records, err := d.OdooClient.SearchRead("res.users", domain, fields, 0, 0)
 		if err != nil {
@@ -127,7 +127,7 @@ func getAppEngineUser(d *Deps) http.HandlerFunc {
 
 		// Fetch user
 		userDomain := []interface{}{[]interface{}{"id", "=", int(uid)}}
-		userFields := []string{"id", "name", "login", "email", "active", "groups_id"}
+		userFields := []string{"id", "name", "login", "email", "active", "group_ids"}
 		userRecords, err := d.OdooClient.SearchRead("res.users", userDomain, userFields, 0, 1)
 		if err != nil {
 			httputil.RespondError(w, 500, "ODOO_ERROR", fmt.Sprintf("SearchRead users failed: %v", err))
@@ -199,7 +199,7 @@ func updateAppEngineUserGroups(d *Deps) http.HandlerFunc {
 		// Odoo write: (6, 0, ids) replaces the many2many
 		groupCmd := []interface{}{[]interface{}{6, 0, req.GroupIDs}}
 		vals := map[string]interface{}{
-			"groups_id": groupCmd,
+			"group_ids": groupCmd,
 		}
 		_, err = d.OdooClient.Call("res.users", "write", []interface{}{[]int{int(uid)}, vals}, nil)
 		if err != nil {
