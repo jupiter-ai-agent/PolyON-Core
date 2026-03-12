@@ -4,12 +4,73 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 	"github.com/triangles/polyon-core/internal/httputil"
 )
+
+// extractSummary extracts the first meaningful paragraph from an RST description.
+// RST headers (===, ---, ~~~), directives (.. foo::), and field lists (:foo:) are stripped.
+func extractSummary(desc string) string {
+	lines := strings.Split(desc, "\n")
+	var paragraphLines []string
+	inParagraph := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip RST underline/overline (all same punctuation chars, len >= 3)
+		if len(trimmed) >= 3 && isRSTRule(trimmed) {
+			inParagraph = false
+			continue
+		}
+		// Skip RST directives and field lists
+		if strings.HasPrefix(trimmed, ".. ") || (strings.HasPrefix(trimmed, ":") && strings.Contains(trimmed, ":")) {
+			inParagraph = false
+			continue
+		}
+
+		if trimmed == "" {
+			if inParagraph && len(paragraphLines) > 0 {
+				// End of first paragraph — stop collecting
+				break
+			}
+			continue
+		}
+
+		inParagraph = true
+		paragraphLines = append(paragraphLines, trimmed)
+	}
+
+	summary := strings.Join(paragraphLines, " ")
+	// Trim and limit length
+	summary = strings.TrimSpace(summary)
+	runes := []rune(summary)
+	if len(runes) > 160 {
+		summary = string(runes[:157]) + "..."
+	}
+	return summary
+}
+
+func isRSTRule(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	ch := rune(s[0])
+	if unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == ' ' {
+		return false
+	}
+	for _, r := range s {
+		if r != ch {
+			return false
+		}
+	}
+	return true
+}
 
 // RegisterAppEngineModules registers Odoo module management routes.
 func RegisterAppEngineModules(r chi.Router, d *Deps) {
@@ -23,14 +84,14 @@ func RegisterAppEngineModules(r chi.Router, d *Deps) {
 
 // odooModuleRecord is the structure returned to the frontend.
 type odooModuleRecord struct {
-	ID          int         `json:"id"`
-	Name        string      `json:"name"`
-	ShortDesc   string      `json:"shortdesc"`
-	State       string      `json:"state"`
-	Author      string      `json:"author"`
-	Description string      `json:"description"`
-	CategoryID  interface{} `json:"category_id"`
-	IconData    string      `json:"icon_image"`
+	ID         int         `json:"id"`
+	Name       string      `json:"name"`
+	ShortDesc  string      `json:"shortdesc"`
+	Summary    string      `json:"summary"`
+	State      string      `json:"state"`
+	Author     string      `json:"author"`
+	CategoryID interface{} `json:"category_id"`
+	IconData   string      `json:"icon_image"`
 }
 
 // listAppEngineModules returns Odoo application modules (all states by default).
@@ -80,7 +141,7 @@ func listAppEngineModules(d *Deps) http.HandlerFunc {
 				m.Author = v
 			}
 			if v, ok := rec["description"].(string); ok {
-				m.Description = v
+				m.Summary = extractSummary(v)
 			}
 			m.CategoryID = rec["category_id"]
 			if v, ok := rec["icon_image"].(string); ok {
