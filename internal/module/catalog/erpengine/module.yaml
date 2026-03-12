@@ -1,13 +1,13 @@
-# PolyON Module Manifest — PP Odoo v0.2.0
+# PolyON Module Manifest — PolyON ERPEngine v0.3.0
 # PP 제1원칙: Keycloak SSO 인증 (LDAP 직접 인증 금지)
 
 apiVersion: polyon.io/v1
 kind: Module
 
 metadata:
-  id: odoo
-  name: PP Odoo
-  version: "0.2.0"
+  id: erpengine
+  name: PolyON ERPEngine
+  version: "0.3.0"
   category: engine
   description: "ERP/HR/비즈니스 관리 플랫폼"
   icon: Enterprise
@@ -15,14 +15,14 @@ metadata:
   license: LGPL-3.0
 
 spec:
-  engine: odoo
+  engine: erpengine
 
   requires:
     - id: postgresql
     - id: rustfs
 
   resources:
-    image: jupitertriangles/polyon-odoo:v0.2.0
+    image: jupitertriangles/polyon-erpengine:v0.5.3
     replicas: 1
     ports:
       - name: http
@@ -44,21 +44,21 @@ spec:
   claims:
     - type: database
       config:
-        name: odoo
+        name: erpengine
     - type: objectStorage
       config:
-        bucket: odoo
+        bucket: erpengine
     - type: smtp
       config:
-        domain: odoo
+        domain: erpengine
     - type: auth
       config:
-        clientId: odoo
+        clientId: erpengine
         accessType: confidential
         redirectUris:
-          - "https://odoo.{{ baseDomain }}/*"
-          - "https://console.{{ baseDomain }}/modules/odoo/*"
-          - "https://portal.{{ baseDomain }}/modules/odoo/*"
+          - "https://erp.{{ baseDomain }}/*"
+          - "https://console.{{ baseDomain }}/modules/erpengine/*"
+          - "https://portal.{{ baseDomain }}/modules/erpengine/*"
 
   env:
     # Database
@@ -86,13 +86,13 @@ spec:
     OIDC_JWKS_URI: "{{ claims.auth.jwksUri }}"
     # Odoo 정적 설정
     ODOO_ADMIN_PASSWORD: "admin"
-    ODOO_DB_FILTER: "^polyon_odoo$"
+    ODOO_DB_FILTER: "^polyon_erp$"
     ODOO_LIST_DB: "false"
     ODOO_PROXY_MODE: "true"
     ODOO_WORKERS: "2"
 
   ingress:
-    subdomain: odoo
+    subdomain: erp
     port: 8069
 
   console:
@@ -100,7 +100,7 @@ spec:
     adminPath: /web
     pages:
       - id: backend
-        title: "Odoo 관리"
+        title: "ERPEngine 관리"
         icon: Enterprise
         path: ""
         default: true

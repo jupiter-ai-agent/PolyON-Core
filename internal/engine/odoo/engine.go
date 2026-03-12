@@ -18,7 +18,7 @@ func NewEngine(client *Client) *OdooEngine {
 
 // Name returns the engine identifier.
 func (e *OdooEngine) Name() string {
-	return "odoo"
+	return "erpengine"
 }
 
 // Health checks Odoo reachability and returns a HealthStatus.

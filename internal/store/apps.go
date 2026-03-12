@@ -50,6 +50,7 @@ var seedApps = []AppMeta{
 	{ID: "workstream", Name: "Workstream", Desc: "업무 관리 · 타임라인 · 컨텍스트 엔진", Base: "Custom", Icon: "reportData", Category: "intelligence", Subdomain: "ws", Containers: []string{"app-workstream"}, BaseStatus: "coming-soon", Details: "업무 중심 그룹웨어.", BackendURL: "http://app-workstream:3000"},
 	{ID: "ai-agent", Name: "AI Agent", Desc: "LLM 기반 업무 지원 · 자동화", Base: "OpenClaw/Ollama", Icon: "bot", Category: "intelligence", Subdomain: "ai", Containers: []string{"app-ai-agent"}, BaseStatus: "coming-soon", Details: "AI 기반 업무 어시스턴트.", BackendURL: "http://app-ai-agent:3000"},
 	{ID: "homepage", Name: "Homepage", Desc: "웹사이트 빌더 · CMS · Git 배포", Base: "Strapi + Next.js", Icon: "applicationWeb", Category: "productivity", Subdomain: "", Containers: []string{"polyon-strapi", "polyon-gitea"}, BaseStatus: "active", Details: "CMS 또는 Git으로 홈페이지를 만들고 배포합니다.", BackendURL: "http://polyon-strapi:1337"},
+	{ID: "erpengine", Name: "PolyON ERPEngine", Desc: "ERP · HR · 회계 · 비즈니스 관리 엔진", Base: "Odoo", Icon: "Enterprise", Category: "business", Subdomain: "erp", Containers: []string{"polyon-erpengine"}, BaseStatus: "active", Details: "검증된 ERP 엔진. Odoo 19 기반. HR, 회계, 프로젝트 관리.", BackendURL: "http://polyon-erpengine:8069"},
 }
 
 // migrateApps creates the polyon_apps table and seeds the initial catalog.
