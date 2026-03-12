@@ -30,9 +30,10 @@ type odooModuleRecord struct {
 	Author      string      `json:"author"`
 	Description string      `json:"description"`
 	CategoryID  interface{} `json:"category_id"`
+	IconData    string      `json:"icon_data"`
 }
 
-// listAppEngineModules returns installed (or pending) Odoo modules.
+// listAppEngineModules returns Odoo application modules (all states by default).
 func listAppEngineModules(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.OdooClient == nil {
@@ -44,26 +45,21 @@ func listAppEngineModules(d *Deps) http.HandlerFunc {
 		defer cancel()
 		_ = ctx
 
-		// 쿼리 파라미터: state 필터 (기본: installed + to_upgrade)
-		stateFilter := r.URL.Query().Get("state")
-		var domain []interface{}
-		if stateFilter != "" && stateFilter != "all" {
-			domain = []interface{}{
-				[]interface{}{"state", "=", stateFilter},
-			}
-		} else {
-			domain = []interface{}{
-				[]interface{}{"state", "in", []interface{}{"installed", "to_upgrade", "to_remove"}},
-			}
+		// 기본 domain: application=true (기술 모듈 제외, 앱만)
+		domain := []interface{}{
+			[]interface{}{"application", "=", true},
 		}
 
-		fields := []string{"id", "name", "shortdesc", "state", "author", "description", "category_id"}
+		fields := []string{"id", "name", "shortdesc", "state", "author", "description", "category_id", "icon_data"}
 		records, err := d.OdooClient.SearchRead("ir.module.module", domain, fields, 0, 500)
 		if err != nil {
 			log.Error().Err(err).Msg("listAppEngineModules: SearchRead failed")
 			httputil.RespondError(w, http.StatusInternalServerError, "ODOO_ERROR", "Odoo 모듈 목록 조회 실패: "+err.Error())
 			return
 		}
+
+		// 쿼리 파라미터: state 필터 (클라이언트 사이드 필터링 지원)
+		stateFilter := r.URL.Query().Get("state")
 
 		modules := make([]odooModuleRecord, 0, len(records))
 		for _, rec := range records {
@@ -87,6 +83,17 @@ func listAppEngineModules(d *Deps) http.HandlerFunc {
 				m.Description = v
 			}
 			m.CategoryID = rec["category_id"]
+			if v, ok := rec["icon_data"].(string); ok {
+				m.IconData = v
+			}
+
+			// state 필터 적용 (서버 사이드)
+			if stateFilter != "" && stateFilter != "all" {
+				if m.State != stateFilter {
+					continue
+				}
+			}
+
 			modules = append(modules, m)
 		}
 
@@ -123,9 +130,9 @@ func installAppEngineModule(d *Deps) http.HandlerFunc {
 
 		log.Info().Str("module", name).Ints("ids", ids).Msg("AppEngine module install triggered")
 		httputil.RespondOK(w, map[string]interface{}{
-			"status":  "triggered",
-			"module":  name,
-			"action":  "install",
+			"status": "triggered",
+			"module": name,
+			"action": "install",
 		})
 	}
 }
