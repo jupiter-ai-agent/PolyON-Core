@@ -143,6 +143,10 @@ var seedComponents = []Component{
 		ContainerName: "polyon-ai", Engine: "litellm", Host: "polyon-ai", Port: 4000,
 		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "watsonHealth3rdParty", Accent: "#8a3ffc",
 		DependsOn: j(`["postgresql","redis"]`), Status: "active"},
+	{ID: "erpengine", Name: "PolyON ERPEngine", Description: "ERP · HR · 회계 엔진 (Odoo 기반)", Category: "foundation", SortOrder: 14,
+		ContainerName: "polyon-erpengine", Engine: "odoo", Host: "polyon-erpengine", Port: 8069,
+		HealthEndpoint: "/web/health", HealthMethod: "GET", Icon: "enterprise", Accent: "#714B67",
+		DependsOn: j(`["postgresql","keycloak"]`), Status: "active"},
 
 	// ── monitoring: 관측 및 대시보드 (5) ──
 	{ID: "prometheus", Name: "Prometheus", Description: "Metrics", Category: "monitoring", SortOrder: 1,
