@@ -80,32 +80,85 @@ func toOdooGroup(m map[string]interface{}) odooGroupRecord {
 	return g
 }
 
-// listAppEngineUsers returns the list of internal Odoo users.
+// adUserRecord represents an AD user merged with Odoo registration status.
+type adUserRecord struct {
+	Login       string      `json:"login"`
+	DisplayName string      `json:"display_name"`
+	Email       string      `json:"email"`
+	OdooID      int64       `json:"odoo_id,omitempty"`
+	OdooActive  bool        `json:"odoo_active"`
+	GroupIDs    interface{} `json:"group_ids,omitempty"`
+}
+
+// listAppEngineUsers returns all AD users (via LDAP) merged with Odoo registration info.
 func listAppEngineUsers(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if d.OdooClient == nil {
-			httputil.RespondError(w, 503, "ODOO_UNAVAILABLE", "Odoo client not configured")
-			return
+		// 1. AD LDAP에서 사용자 목록 조회
+		adUsers := make([]adUserRecord, 0)
+		if d.LDAP != nil {
+			baseDN := "CN=Users," + d.Cfg.BaseDN()
+			filter := "(&(objectClass=user)(!(isCriticalSystemObject=TRUE))(!(sAMAccountName=krbtgt))(!(sAMAccountName=Guest)))"
+			attrs := []string{"sAMAccountName", "displayName", "mail", "userPrincipalName"}
+			entries, err := d.LDAP.SearchSubtree(baseDN, filter, attrs)
+			if err == nil {
+				for _, e := range entries {
+					login := e.Get("sAMAccountName")
+					if login == "" {
+						continue
+					}
+					email := e.Get("mail")
+					if email == "" {
+						email = e.Get("userPrincipalName")
+					}
+					adUsers = append(adUsers, adUserRecord{
+						Login:       login,
+						DisplayName: e.Get("displayName"),
+						Email:       email,
+					})
+				}
+			}
 		}
 
-		domain := []interface{}{[]interface{}{"share", "=", false}}
-		fields := []string{"id", "name", "login", "email", "active", "group_ids"}
-
-		records, err := d.OdooClient.SearchRead("res.users", domain, fields, 0, 0)
-		if err != nil {
-			httputil.RespondError(w, 500, "ODOO_ERROR", fmt.Sprintf("SearchRead failed: %v", err))
-			return
-		}
-
-		users := make([]odooUserRecord, 0, len(records))
-		for _, rec := range records {
-			users = append(users, toOdooUser(rec))
+		// 2. Odoo res.users에서 등록 상태 조회 후 매핑
+		if d.OdooClient != nil {
+			domain := []interface{}{[]interface{}{"share", "=", false}}
+			fields := []string{"id", "login", "active", "group_ids"}
+			records, err := d.OdooClient.SearchRead("res.users", domain, fields, 0, 0)
+			if err == nil {
+				odooMap := make(map[string]odooUserRecord)
+				for _, rec := range records {
+					u := toOdooUser(rec)
+					odooMap[u.Login] = u
+				}
+				for i, u := range adUsers {
+					if ou, ok := odooMap[u.Login]; ok {
+						adUsers[i].OdooID = ou.ID
+						adUsers[i].OdooActive = ou.Active
+						adUsers[i].GroupIDs = ou.GroupIDs
+					}
+				}
+				// Odoo에만 있는 사용자 (OIDC로 가입, AD에 없는 경우) 추가
+				adLogins := make(map[string]bool)
+				for _, u := range adUsers {
+					adLogins[u.Login] = true
+				}
+				for _, ou := range odooMap {
+					if !adLogins[ou.Login] && ou.Login != "admin" {
+						adUsers = append(adUsers, adUserRecord{
+							Login:      ou.Login,
+							OdooID:     ou.ID,
+							OdooActive: ou.Active,
+							GroupIDs:   ou.GroupIDs,
+						})
+					}
+				}
+			}
 		}
 
 		httputil.RespondOK(w, map[string]interface{}{
 			"success": true,
-			"users":   users,
-			"count":   len(users),
+			"users":   adUsers,
+			"count":   len(adUsers),
 		})
 	}
 }
