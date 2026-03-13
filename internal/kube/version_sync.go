@@ -45,11 +45,13 @@ func (vs *VersionSyncer) sync(ctx context.Context) {
 	imageMap := map[string]string{}
 	ns := vs.client.namespace
 
+	// Deployment 이름 기준으로 매핑 (DB container_name과 일치)
+	// e.g. Deployment "polyon-core" → imageMap["polyon-core"] = "v1.14.6"
 	deps, err := vs.client.cs.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
 	if err == nil {
 		for _, d := range deps.Items {
-			for _, c := range d.Spec.Template.Spec.Containers {
-				imageMap[c.Name] = extractImageTag(c.Image)
+			if len(d.Spec.Template.Spec.Containers) > 0 {
+				imageMap[d.Name] = extractImageTag(d.Spec.Template.Spec.Containers[0].Image)
 			}
 		}
 	} else {
@@ -59,8 +61,8 @@ func (vs *VersionSyncer) sync(ctx context.Context) {
 	ssets, err := vs.client.cs.AppsV1().StatefulSets(ns).List(ctx, metav1.ListOptions{})
 	if err == nil {
 		for _, s := range ssets.Items {
-			for _, c := range s.Spec.Template.Spec.Containers {
-				imageMap[c.Name] = extractImageTag(c.Image)
+			if len(s.Spec.Template.Spec.Containers) > 0 {
+				imageMap[s.Name] = extractImageTag(s.Spec.Template.Spec.Containers[0].Image)
 			}
 		}
 	} else {
