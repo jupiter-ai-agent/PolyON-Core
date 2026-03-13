@@ -82,12 +82,12 @@ func toOdooGroup(m map[string]interface{}) odooGroupRecord {
 
 // adUserRecord represents an AD user merged with Odoo registration status.
 type adUserRecord struct {
-	Login       string      `json:"login"`
-	DisplayName string      `json:"display_name"`
-	Email       string      `json:"email"`
-	OdooID      int64       `json:"odoo_id,omitempty"`
-	OdooActive  bool        `json:"odoo_active"`
-	GroupIDs    interface{} `json:"group_ids,omitempty"`
+	Login    string      `json:"login"`
+	Name     string      `json:"name"`
+	Email    string      `json:"email"`
+	ID       int64       `json:"id,omitempty"`
+	Active   bool        `json:"active"`
+	GroupIDs interface{} `json:"group_ids,omitempty"`
 }
 
 // listAppEngineUsers returns all AD users (via LDAP) merged with Odoo registration info.
@@ -96,7 +96,7 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 		// 1. AD LDAP에서 사용자 목록 조회
 		adUsers := make([]adUserRecord, 0)
 		if d.LDAP != nil {
-			baseDN := "CN=Users," + d.Cfg.BaseDN()
+			baseDN := d.Cfg.BaseDN()
 			filter := "(&(objectClass=user)(!(isCriticalSystemObject=TRUE))(!(sAMAccountName=krbtgt))(!(sAMAccountName=Guest)))"
 			attrs := []string{"sAMAccountName", "displayName", "mail", "userPrincipalName"}
 			entries, err := d.LDAP.SearchSubtree(baseDN, filter, attrs)
@@ -111,9 +111,9 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 						email = e.Get("userPrincipalName")
 					}
 					adUsers = append(adUsers, adUserRecord{
-						Login:       login,
-						DisplayName: e.Get("displayName"),
-						Email:       email,
+						Login: login,
+						Name:  e.Get("displayName"),
+						Email: email,
 					})
 				}
 			}
@@ -132,8 +132,8 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 				}
 				for i, u := range adUsers {
 					if ou, ok := odooMap[u.Login]; ok {
-						adUsers[i].OdooID = ou.ID
-						adUsers[i].OdooActive = ou.Active
+						adUsers[i].ID = ou.ID
+						adUsers[i].Active = ou.Active
 						adUsers[i].GroupIDs = ou.GroupIDs
 					}
 				}
@@ -146,8 +146,8 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 					if !adLogins[ou.Login] && ou.Login != "admin" {
 						adUsers = append(adUsers, adUserRecord{
 							Login:      ou.Login,
-							OdooID:     ou.ID,
-							OdooActive: ou.Active,
+							ID:     ou.ID,
+							Active: ou.Active,
 							GroupIDs:   ou.GroupIDs,
 						})
 					}
