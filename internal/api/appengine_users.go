@@ -101,11 +101,13 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 			attrs := []string{"sAMAccountName", "displayName", "mail", "userPrincipalName"}
 			entries, err := d.LDAP.SearchSubtree(baseDN, filter, attrs)
 			if err == nil {
+				seen := make(map[string]bool)
 				for _, e := range entries {
 					login := e.Get("sAMAccountName")
-					if login == "" {
+					if login == "" || seen[login] {
 						continue
 					}
+					seen[login] = true
 					email := e.Get("mail")
 					if email == "" {
 						email = e.Get("userPrincipalName")
