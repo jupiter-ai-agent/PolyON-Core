@@ -16,12 +16,7 @@ jobs:
       - name: Read version from VERSION file
         id: version
         run: |
-          # 이 리포에 VERSION 파일이 있으면 우선 사용, 없으면 PolyON-Operator에서 읽기
-          if [ -f VERSION ]; then
-            VER=$(grep "^core=" VERSION | cut -d= -f2)
-          else
-            VER=$(curl -sf https://raw.githubusercontent.com/jupiter-ai-agent/PolyON-Operator/main/VERSION | grep "^core=" | cut -d= -f2)
-          fi
+          VER=$(cat VERSION | tr -d '[:space:]')
           echo "version=${VER}" >> $GITHUB_OUTPUT
           echo "Image version: ${VER}"
 
