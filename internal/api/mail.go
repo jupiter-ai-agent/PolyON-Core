@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/triangles/polyon-core/internal/httputil"
 )
 
@@ -252,6 +254,7 @@ func RegisterMail(r chi.Router, d *Deps) {
 		r.Get("/status", mailStatus(d))
 		r.Get("/service-check", mailServiceCheck(d))
 		r.Get("/dns-checklist", mailDNSChecklist(d))
+		r.Get("/storage/overview", mailStorageOverview(d))
 	})
 }
 
@@ -763,5 +766,142 @@ func stalwartProvisionStandaloneAccount(d *Deps, username, domain, password stri
 func stalwartDeleteAccount(d *Deps, username string) {
 	if resp, err := stalwartDo(d, "DELETE", "/api/principal/"+username, nil); err == nil && resp != nil {
 		resp.Body.Close()
+	}
+}
+
+// ── GET /mail/storage/overview ────────────────────────────────────────────────
+
+func mailStorageOverview(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		type storeEntry struct {
+			Name    string `json:"name"`
+			Backend string `json:"backend"`
+			Status  string `json:"status"`
+			Details string `json:"details"`
+		}
+		type bucketInfo struct {
+			Name        string `json:"name"`
+			Endpoint    string `json:"endpoint"`
+			ObjectCount int64  `json:"object_count"`
+			TotalBytes  int64  `json:"total_bytes"`
+			Status      string `json:"status"`
+		}
+
+		// 1. Stalwart storage 설정 조회
+		stores := []storeEntry{}
+		type settingResp struct {
+			Data struct {
+				Items map[string]string `json:"items"`
+			} `json:"data"`
+		}
+		resp, err := stalwartDo(d, "GET", "/api/settings/list?prefix=storage", nil)
+		if err == nil && resp != nil {
+			var sr settingResp
+			if json.NewDecoder(resp.Body).Decode(&sr) == nil {
+				resp.Body.Close()
+				labelMap := map[string]string{
+					"data":      "메일 메타데이터",
+					"blob":      "첨부파일(Blob)",
+					"fts":       "전문검색(FTS)",
+					"lookup":    "조회 캐시",
+					"directory": "사용자 디렉터리",
+				}
+				backendMap := map[string]string{
+					"rocksdb":       "RocksDB (내부)",
+					"s3":            "S3 / RustFS",
+					"elasticsearch": "OpenSearch",
+					"opensearch":    "OpenSearch",
+					"redis":         "Redis",
+					"postgresql":    "PostgreSQL",
+				}
+				for key, backend := range sr.Data.Items {
+					label := labelMap[key]
+					if label == "" {
+						label = key
+					}
+					bLabel := backendMap[backend]
+					if bLabel == "" {
+						bLabel = backend
+					}
+					status := "ok"
+					if backend == "rocksdb" && key == "blob" {
+						status = "warn" // blob은 S3 권장
+					}
+					stores = append(stores, storeEntry{
+						Name:    label,
+						Backend: bLabel,
+						Status:  status,
+						Details: key + " = " + backend,
+					})
+				}
+			} else if resp != nil {
+				resp.Body.Close()
+			}
+		}
+
+		// 2. S3 버킷 현황 (stalwart-blobs)
+		bucket := bucketInfo{
+			Name:     "stalwart-blobs",
+			Endpoint: d.Cfg.RustFSEndpoint,
+			Status:   "unknown",
+		}
+		if d.Cfg.RustFSEndpoint != "" && d.Cfg.RustFSAccessKey != "" {
+			ep := strings.TrimPrefix(d.Cfg.RustFSEndpoint, "https://")
+			ep = strings.TrimPrefix(ep, "http://")
+			secure := strings.HasPrefix(d.Cfg.RustFSEndpoint, "https://")
+			mc, merr := minio.New(ep, &minio.Options{
+				Creds:  credentials.NewStaticV4(d.Cfg.RustFSAccessKey, d.Cfg.RustFSSecretKey, ""),
+				Secure: secure,
+			})
+			if merr == nil {
+				objs := mc.ListObjects(ctx, "stalwart-blobs", minio.ListObjectsOptions{Recursive: true})
+				var count int64
+				var totalBytes int64
+				for obj := range objs {
+					if obj.Err == nil {
+						count++
+						totalBytes += obj.Size
+					}
+				}
+				bucket.ObjectCount = count
+				bucket.TotalBytes = totalBytes
+				bucket.Status = "ok"
+			} else {
+				bucket.Status = "error"
+			}
+		}
+
+		// 3. PRC claim 상태
+		type claimInfo struct {
+			Type    string `json:"type"`
+			Status  string `json:"status"`
+			Details string `json:"details"`
+		}
+		claims := []claimInfo{}
+		if d.PRC != nil {
+			if items, err := d.PRC.ListClaims(ctx, "", "", "mail"); err == nil {
+				for _, item := range items {
+					claims = append(claims, claimInfo{
+						Type:   item.ClaimType,
+						Status: item.Status,
+					})
+				}
+			}
+		}
+
+		// mail 모듈은 Wizard 배포 → PRC 없음 안내
+		prcNote := ""
+		if len(claims) == 0 {
+			prcNote = "mail 모듈은 Wizard 직접 배포 (PRC 미실행)"
+		}
+
+		httputil.RespondOK(w, map[string]interface{}{
+			"stores":   stores,
+			"bucket":   bucket,
+			"claims":   claims,
+			"prc_note": prcNote,
+		})
 	}
 }
