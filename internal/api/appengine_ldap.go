@@ -21,6 +21,19 @@ func RegisterAppEngineLDAP(r chi.Router, d *Deps) {
 		r.Get("/groups", listAppEngineLDAPGroups(d))
 		r.Post("/sync/{id}", syncAppEngineLDAPUsers(d))
 		r.Post("/import/{id}", importAppEngineLDAPUsers(d))
+
+		// Sync Wizard endpoints
+		r.Route("/wizard", func(r chi.Router) {
+			r.Get("/", getAppEngineLDAPWizard(d))
+			r.Post("/refresh", refreshAppEngineLDAPWizard(d))
+			r.Get("/groups", getAppEngineLDAPWizardGroups(d))
+			r.Put("/groups", updateAppEngineLDAPWizardGroups(d))
+			r.Get("/users", getAppEngineLDAPWizardUsers(d))
+			r.Put("/users", updateAppEngineLDAPWizardUsers(d))
+			r.Get("/schedule", getAppEngineLDAPWizardSchedule(d))
+			r.Put("/schedule", updateAppEngineLDAPWizardSchedule(d))
+			r.Post("/sync", syncAppEngineLDAPWizard(d))
+		})
 	})
 }
 
@@ -512,6 +525,379 @@ func extractWizardID(result interface{}) int {
 		}
 	}
 	return 0
+}
+
+// ── Sync Wizard Endpoints ────────────────────────────────────────────────────
+
+var wizardFields = []string{
+	"id", "ldap_id", "ldap_server_name", "user_count", "group_count",
+	"sync_user_count", "selected_group_count", "sync_enabled", "sync_interval",
+	"last_sync_date", "last_sync_status", "last_sync_user_count",
+}
+
+var wizardGroupFields = []string{
+	"id", "wizard_id", "selected", "sequence", "name", "description",
+	"member_count", "ldap_dn", "exists_in_odoo",
+}
+
+var wizardUserFields = []string{
+	"id", "wizard_id", "sync_mode", "is_sync_target", "screen_name",
+	"email", "first_name", "last_name", "job_title", "group_count",
+	"ldap_dn", "exists_in_odoo",
+}
+
+// resolveWizardLDAPID extracts ldap_id from query param; falls back to first LDAP record.
+func resolveWizardLDAPID(d *Deps, r *http.Request) (int, error) {
+	ldapID := 0
+	if v := r.URL.Query().Get("ldap_id"); v != "" {
+		fmt.Sscanf(v, "%d", &ldapID)
+	}
+	if ldapID == 0 {
+		recs, err := d.OdooClient.SearchRead("res.company.ldap", []interface{}{}, []string{"id"}, 0, 1)
+		if err != nil || len(recs) == 0 {
+			return 0, fmt.Errorf("LDAP 설정을 찾을 수 없습니다")
+		}
+		ldapID = int(odooID(recs[0]))
+	}
+	return ldapID, nil
+}
+
+// GET /appengine/ldap/wizard?ldap_id=N
+func getAppEngineLDAPWizard(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+		records, err := d.OdooClient.SearchRead(
+			"ldap.sync.wizard",
+			[]interface{}{[]interface{}{"id", "=", wizardID}},
+			wizardFields, 0, 1,
+		)
+		if err != nil || len(records) == 0 {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", "wizard 조회 실패")
+			return
+		}
+		httputil.RespondOK(w, map[string]interface{}{"wizard": records[0]})
+	}
+}
+
+// POST /appengine/ldap/wizard/refresh?ldap_id=N
+func refreshAppEngineLDAPWizard(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+		if _, err = d.OdooClient.Call(
+			"ldap.sync.wizard", "action_refresh_from_ldap",
+			[]interface{}{[]int{wizardID}}, nil,
+		); err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("LDAP 갱신 실패: %v", err))
+			return
+		}
+		records, err := d.OdooClient.SearchRead(
+			"ldap.sync.wizard",
+			[]interface{}{[]interface{}{"id", "=", wizardID}},
+			wizardFields, 0, 1,
+		)
+		if err != nil || len(records) == 0 {
+			httputil.RespondOK(w, map[string]interface{}{"status": "ok"})
+			return
+		}
+		httputil.RespondOK(w, map[string]interface{}{"wizard": records[0], "status": "ok"})
+	}
+}
+
+// GET /appengine/ldap/wizard/groups?ldap_id=N
+func getAppEngineLDAPWizardGroups(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+		lines, err := d.OdooClient.SearchRead(
+			"ldap.sync.wizard.group.line",
+			[]interface{}{[]interface{}{"wizard_id", "=", wizardID}},
+			wizardGroupFields, 0, 500,
+		)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("그룹 목록 조회 실패: %v", err))
+			return
+		}
+		httputil.RespondOK(w, map[string]interface{}{"groups": lines, "total": len(lines)})
+	}
+}
+
+// PUT /appengine/ldap/wizard/groups?ldap_id=N
+// Body: {"select_all": true} | {"deselect_all": true} | {"groups": [{"id":1,"selected":true}]}
+func updateAppEngineLDAPWizardGroups(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+
+		var body struct {
+			SelectAll   bool `json:"select_all"`
+			DeselectAll bool `json:"deselect_all"`
+			Groups      []struct {
+				ID       int  `json:"id"`
+				Selected bool `json:"selected"`
+			} `json:"groups"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid_body", "요청 본문 파싱 실패")
+			return
+		}
+
+		if body.SelectAll || body.DeselectAll {
+			lines, err := d.OdooClient.SearchRead(
+				"ldap.sync.wizard.group.line",
+				[]interface{}{[]interface{}{"wizard_id", "=", wizardID}},
+				[]string{"id"}, 0, 500,
+			)
+			if err != nil {
+				httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("그룹 라인 조회 실패: %v", err))
+				return
+			}
+			ids := make([]int, 0, len(lines))
+			for _, l := range lines {
+				ids = append(ids, int(odooID(l)))
+			}
+			if len(ids) > 0 {
+				if _, err = d.OdooClient.Call(
+					"ldap.sync.wizard.group.line", "write",
+					[]interface{}{ids, map[string]interface{}{"selected": body.SelectAll}},
+					nil,
+				); err != nil {
+					httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("그룹 선택 변경 실패: %v", err))
+					return
+				}
+			}
+		} else if len(body.Groups) > 0 {
+			for _, g := range body.Groups {
+				if _, err = d.OdooClient.Call(
+					"ldap.sync.wizard.group.line", "write",
+					[]interface{}{[]int{g.ID}, map[string]interface{}{"selected": g.Selected}},
+					nil,
+				); err != nil {
+					httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("그룹 %d 변경 실패: %v", g.ID, err))
+					return
+				}
+			}
+		}
+
+		httputil.RespondOK(w, map[string]string{"status": "ok"})
+	}
+}
+
+// GET /appengine/ldap/wizard/users?ldap_id=N
+func getAppEngineLDAPWizardUsers(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+		lines, err := d.OdooClient.SearchRead(
+			"ldap.sync.wizard.user.line",
+			[]interface{}{[]interface{}{"wizard_id", "=", wizardID}},
+			wizardUserFields, 0, 1000,
+		)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("사용자 목록 조회 실패: %v", err))
+			return
+		}
+		httputil.RespondOK(w, map[string]interface{}{"users": lines, "total": len(lines)})
+	}
+}
+
+// PUT /appengine/ldap/wizard/users?ldap_id=N
+// Body: {"set_all": "group|enable|disable"} | {"users": [{"id":1,"sync_mode":"enable"}]}
+func updateAppEngineLDAPWizardUsers(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+
+		var body struct {
+			SetAll string `json:"set_all"`
+			Users  []struct {
+				ID       int    `json:"id"`
+				SyncMode string `json:"sync_mode"`
+			} `json:"users"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid_body", "요청 본문 파싱 실패")
+			return
+		}
+
+		if body.SetAll != "" {
+			lines, err := d.OdooClient.SearchRead(
+				"ldap.sync.wizard.user.line",
+				[]interface{}{[]interface{}{"wizard_id", "=", wizardID}},
+				[]string{"id"}, 0, 1000,
+			)
+			if err != nil {
+				httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("사용자 라인 조회 실패: %v", err))
+				return
+			}
+			ids := make([]int, 0, len(lines))
+			for _, l := range lines {
+				ids = append(ids, int(odooID(l)))
+			}
+			if len(ids) > 0 {
+				if _, err = d.OdooClient.Call(
+					"ldap.sync.wizard.user.line", "write",
+					[]interface{}{ids, map[string]interface{}{"sync_mode": body.SetAll}},
+					nil,
+				); err != nil {
+					httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("사용자 정책 일괄 변경 실패: %v", err))
+					return
+				}
+			}
+		} else if len(body.Users) > 0 {
+			for _, u := range body.Users {
+				if _, err = d.OdooClient.Call(
+					"ldap.sync.wizard.user.line", "write",
+					[]interface{}{[]int{u.ID}, map[string]interface{}{"sync_mode": u.SyncMode}},
+					nil,
+				); err != nil {
+					httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("사용자 %d 변경 실패: %v", u.ID, err))
+					return
+				}
+			}
+		}
+
+		httputil.RespondOK(w, map[string]string{"status": "ok"})
+	}
+}
+
+// GET /appengine/ldap/wizard/schedule?ldap_id=N
+func getAppEngineLDAPWizardSchedule(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+		records, err := d.OdooClient.SearchRead(
+			"ldap.sync.wizard",
+			[]interface{}{[]interface{}{"id", "=", wizardID}},
+			[]string{"id", "sync_enabled", "sync_interval", "last_sync_date", "last_sync_status", "last_sync_user_count"},
+			0, 1,
+		)
+		if err != nil || len(records) == 0 {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", "스케줄 조회 실패")
+			return
+		}
+		httputil.RespondOK(w, map[string]interface{}{"schedule": records[0]})
+	}
+}
+
+// PUT /appengine/ldap/wizard/schedule?ldap_id=N
+// Body: {"sync_enabled": true, "sync_interval": 60}
+func updateAppEngineLDAPWizardSchedule(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+
+		var body struct {
+			SyncEnabled  bool `json:"sync_enabled"`
+			SyncInterval int  `json:"sync_interval"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid_body", "요청 본문 파싱 실패")
+			return
+		}
+
+		if _, err = d.OdooClient.Call(
+			"ldap.sync.wizard", "write",
+			[]interface{}{[]int{wizardID}, map[string]interface{}{
+				"sync_enabled":  body.SyncEnabled,
+				"sync_interval": body.SyncInterval,
+			}},
+			nil,
+		); err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("스케줄 저장 실패: %v", err))
+			return
+		}
+		httputil.RespondOK(w, map[string]string{"status": "ok"})
+	}
+}
+
+// POST /appengine/ldap/wizard/sync?ldap_id=N
+func syncAppEngineLDAPWizard(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ldapID, err := resolveWizardLDAPID(d, r)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", err.Error())
+			return
+		}
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+		if _, err = d.OdooClient.Call(
+			"ldap.sync.wizard", "action_sync_selected",
+			[]interface{}{[]int{wizardID}}, nil,
+		); err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("동기화 실패: %v", err))
+			return
+		}
+		httputil.RespondOK(w, map[string]interface{}{"status": "ok"})
+	}
 }
 
 // extractNotificationMessage pulls the human-readable message from an Odoo
