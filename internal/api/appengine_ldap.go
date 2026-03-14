@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -896,9 +897,118 @@ func syncAppEngineLDAPWizard(d *Deps) http.HandlerFunc {
 			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("동기화 실패: %v", err))
 			return
 		}
+		// Stalwart에 AD 사용자 동기화 (Option C: internal directory + LDAP auth)
+		go syncWizardUsersToStalwart(d, ldapID)
 		httputil.RespondOK(w, map[string]interface{}{"status": "ok"})
 	}
 }
+
+// syncWizardUsersToStalwart: Sync Wizard의 is_sync_target=true 사용자를 Stalwart internal directory에 등록.
+// 비밀번호 없이 등록하여 LDAP 인증에만 의존 (Option C).
+func syncWizardUsersToStalwart(d *Deps, ldapID int) {
+	if d.OdooClient == nil || d.Cfg.StalwartURL == "" {
+		return
+	}
+
+	// DB에서 mail_domain 조회
+	mailDomain := ""
+	if d.Store != nil {
+		if configs, err := d.Store.GetConfigs(context.Background(), []string{"mail_domain"}); err == nil {
+			mailDomain = configs["mail_domain"]
+		}
+	}
+
+	// 1. Sync Target 사용자 조회
+	lines, err := d.OdooClient.SearchRead(
+		"ldap.sync.wizard.user.line",
+		[]interface{}{
+			[]interface{}{"is_sync_target", "=", true},
+		},
+		[]string{"screen_name", "email", "first_name", "last_name"},
+		0, 0,
+	)
+	if err != nil {
+		return
+	}
+
+	// 2. Stalwart에 사용자 등록 (없으면 생성, 있으면 업데이트)
+	for _, line := range lines {
+		login, _ := line["screen_name"].(string)
+		email, _ := line["email"].(string)
+		firstName, _ := line["first_name"].(string)
+		lastName, _ := line["last_name"].(string)
+
+		if login == "" {
+			continue
+		}
+		if email == "" {
+			domain := mailDomain
+			if domain == "" {
+				domain = "cmars.com"
+			}
+			email = login + "@" + domain
+		}
+
+		name := firstName + " " + lastName
+		if name == " " {
+			name = login
+		}
+
+		// GET으로 존재 확인
+		resp, err := stalwartDo(d, "GET", "/api/principal/"+login, nil)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			// 이미 존재하면 PATCH
+			pr, _ := stalwartDo(d, "PATCH", "/api/principal/"+login, []map[string]interface{}{
+				{"action": "set", "field": "displayName", "value": name},
+				{"action": "set", "field": "email", "value": []string{email}},
+			})
+			if pr != nil {
+				pr.Body.Close()
+			}
+		} else if resp.StatusCode == 404 {
+			// 신규 생성 (비밀번호 없음 - LDAP 인증 전용)
+			r2, err2 := stalwartDo(d, "POST", "/api/principal", map[string]interface{}{
+				"type":        "individual",
+				"name":        login,
+				"displayName": name,
+				"emails":      []string{email},
+				"secrets":     []string{},
+			})
+			if err2 == nil && r2 != nil {
+				r2.Body.Close()
+			}
+		}
+	}
+
+	// 3. non-target 사용자 Stalwart에서 삭제
+	nonTargets, err := d.OdooClient.SearchRead(
+		"ldap.sync.wizard.user.line",
+		[]interface{}{
+			[]interface{}{"is_sync_target", "=", false},
+		},
+		[]string{"screen_name"},
+		0, 0,
+	)
+	if err == nil {
+		for _, line := range nonTargets {
+			login, _ := line["screen_name"].(string)
+			if login == "" {
+				continue
+			}
+			r, err := stalwartDo(d, "DELETE", "/api/principal/"+login, nil)
+			if err == nil && r != nil {
+				r.Body.Close()
+			}
+		}
+	}
+}
+
+
 
 // extractNotificationMessage pulls the human-readable message from an Odoo
 // display_notification action result.

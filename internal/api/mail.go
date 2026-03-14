@@ -726,12 +726,33 @@ func mailDNSChecklist(d *Deps) http.HandlerFunc {
 
 // ── Mail account helpers used by users.go ─────────────────────────────────────
 
+// stalwartProvisionAccount creates a Stalwart account for an AD-synced user (no password — LDAP auth only).
 func stalwartProvisionAccount(d *Deps, username, domain string) bool {
 	resp, err := stalwartDo(d, "POST", "/api/principal", map[string]interface{}{
+		"type":    "individual",
+		"name":    username,
+		"emails":  []string{username + "@" + domain},
+		"secrets": []string{}, // no password — authenticate via LDAP (Option C)
+	})
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200 || resp.StatusCode == 201
+}
+
+// stalwartProvisionStandaloneAccount creates a Stalwart account for a standalone (non-LDAP) user with a password.
+// Used for project/service accounts managed directly in Console.
+func stalwartProvisionStandaloneAccount(d *Deps, username, domain, password string) bool {
+	body := map[string]interface{}{
 		"type":   "individual",
 		"name":   username,
 		"emails": []string{username + "@" + domain},
-	})
+	}
+	if password != "" {
+		body["secrets"] = []string{password}
+	}
+	resp, err := stalwartDo(d, "POST", "/api/principal", body)
 	if err != nil {
 		return false
 	}
