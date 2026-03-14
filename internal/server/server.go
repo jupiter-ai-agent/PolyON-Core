@@ -378,6 +378,7 @@ func (s *Server) buildRouter() {
 		api.RegisterAppEngineModules(r, deps)
 		api.RegisterAppEngineGroups(r, deps)
 		api.RegisterAppEngineLDAP(r, deps)
+		api.RegisterAppEngineCron(r, deps)
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})
