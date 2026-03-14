@@ -169,7 +169,7 @@ func buildProviders(pool *pgxpool.Pool) []ResourceProvider {
 			Host:          envOr("PG_HOST", "polyon-db"),
 			Port:          envOr("PG_PORT", "5432"),
 			AdminUser:     envOr("PG_ADMIN_USER", "postgres"),
-			AdminPassword: envOr("PG_ADMIN_PASSWORD", ""),
+			AdminPassword: envOrMulti([]string{"PG_ADMIN_PASSWORD", "POSTGRES_PASSWORD", "POLYON_POSTGRES_PASSWORD"}, ""),
 		},
 		// 2. Object Storage (RustFS)
 		&ObjectStorageProvider{
