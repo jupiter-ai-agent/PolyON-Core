@@ -40,8 +40,6 @@ var ldapConfigFields = []string{
 	"ldap_attr_jobtitle", "ldap_attr_photo",
 	"groups_dn", "group_filter", "group_attribute",
 	"sync_groups", "create_role_per_group",
-	"import_enabled", "import_interval", "import_on_startup",
-	"update_existing_users", "user_deletion_strategy",
 	"last_sync_date", "last_sync_status", "last_sync_user_count",
 }
 
@@ -83,13 +81,6 @@ type ldapConfigResponse struct {
 	GroupAttribute     string `json:"group_attribute"`
 	SyncGroups         bool   `json:"sync_groups"`
 	CreateRolePerGroup bool   `json:"create_role_per_group"`
-
-	// Auto Import
-	ImportEnabled        bool   `json:"import_enabled"`
-	ImportInterval       int    `json:"import_interval"`
-	ImportOnStartup      bool   `json:"import_on_startup"`
-	UpdateExistingUsers  bool   `json:"update_existing_users"`
-	UserDeletionStrategy string `json:"user_deletion_strategy"`
 
 	// Sync Status
 	LastSyncDate      string `json:"last_sync_date"`
@@ -167,12 +158,6 @@ func mapToLDAPConfig(m map[string]interface{}) ldapConfigResponse {
 		SyncGroups:         odooBool(m, "sync_groups"),
 		CreateRolePerGroup: odooBool(m, "create_role_per_group"),
 
-		ImportEnabled:        odooBool(m, "import_enabled"),
-		ImportInterval:       odooInt(m, "import_interval"),
-		ImportOnStartup:      odooBool(m, "import_on_startup"),
-		UpdateExistingUsers:  odooBool(m, "update_existing_users"),
-		UserDeletionStrategy: odooStr(m, "user_deletion_strategy"),
-
 		LastSyncDate:      odooStr(m, "last_sync_date"),
 		LastSyncStatus:    odooStr(m, "last_sync_status"),
 		LastSyncUserCount: odooInt(m, "last_sync_user_count"),
@@ -234,8 +219,6 @@ func updateAppEngineLDAPConfig(d *Deps) http.HandlerFunc {
 			"ldap_attr_jobtitle": true, "ldap_attr_photo": true,
 			"groups_dn": true, "group_filter": true, "group_attribute": true,
 			"sync_groups": true, "create_role_per_group": true,
-			"import_enabled": true, "import_interval": true, "import_on_startup": true,
-			"update_existing_users": true, "user_deletion_strategy": true,
 		}
 		vals := map[string]interface{}{}
 		for k, v := range body {
@@ -408,19 +391,25 @@ func listAppEngineLDAPGroups(d *Deps) http.HandlerFunc {
 }
 
 // POST /appengine/ldap/sync/{id}
-// Calls action_sync_all_users on the given LDAP record.
+// Calls action_sync_selected on the ldap.sync.wizard for the given LDAP record.
 func syncAppEngineLDAPUsers(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
-		var id int
-		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil || id <= 0 {
+		var ldapID int
+		if _, err := fmt.Sscanf(idStr, "%d", &ldapID); err != nil || ldapID <= 0 {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid_id", "유효하지 않은 LDAP 설정 ID")
 			return
 		}
 
-		result, err := d.OdooClient.Call(
-			"res.company.ldap", "action_sync_all_users",
-			[]interface{}{[]int{id}},
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
+			return
+		}
+
+		_, err = d.OdooClient.Call(
+			"ldap.sync.wizard", "action_sync_selected",
+			[]interface{}{[]int{wizardID}},
 			nil,
 		)
 		if err != nil {
@@ -428,39 +417,78 @@ func syncAppEngineLDAPUsers(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		httputil.RespondOK(w, map[string]interface{}{
-			"status": "ok",
-			"result": extractNotificationMessage(result),
-		})
+		httputil.RespondOK(w, map[string]interface{}{"status": "ok"})
 	}
 }
 
 // POST /appengine/ldap/import/{id}
-// Calls action_import_users_now on the given LDAP record.
+// Calls action_refresh_from_ldap + action_sync_selected on the ldap.sync.wizard.
 func importAppEngineLDAPUsers(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
-		var id int
-		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil || id <= 0 {
+		var ldapID int
+		if _, err := fmt.Sscanf(idStr, "%d", &ldapID); err != nil || ldapID <= 0 {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid_id", "유효하지 않은 LDAP 설정 ID")
 			return
 		}
 
-		result, err := d.OdooClient.Call(
-			"res.company.ldap", "action_import_users_now",
-			[]interface{}{[]int{id}},
-			nil,
-		)
+		wizardID, err := getOrCreateSyncWizard(d, ldapID)
 		if err != nil {
-			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Import 실패: %v", err))
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("Sync wizard 조회 실패: %v", err))
 			return
 		}
 
-		httputil.RespondOK(w, map[string]interface{}{
-			"status": "ok",
-			"result": extractNotificationMessage(result),
-		})
+		// Refresh from LDAP then sync
+		if _, err = d.OdooClient.Call(
+			"ldap.sync.wizard", "action_refresh_from_ldap",
+			[]interface{}{[]int{wizardID}},
+			nil,
+		); err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("LDAP 갱신 실패: %v", err))
+			return
+		}
+		if _, err = d.OdooClient.Call(
+			"ldap.sync.wizard", "action_sync_selected",
+			[]interface{}{[]int{wizardID}},
+			nil,
+		); err != nil {
+			httputil.RespondError(w, http.StatusBadGateway, "odoo_error", fmt.Sprintf("동기화 실패: %v", err))
+			return
+		}
+
+		httputil.RespondOK(w, map[string]interface{}{"status": "ok"})
 	}
+}
+
+// getOrCreateSyncWizard returns an existing ldap.sync.wizard ID for the given
+// LDAP record, or creates a new one if none exists.
+func getOrCreateSyncWizard(d *Deps, ldapID int) (int, error) {
+	wizards, err := d.OdooClient.SearchRead(
+		"ldap.sync.wizard",
+		[]interface{}{[]interface{}{"ldap_id", "=", ldapID}},
+		[]string{"id"},
+		0, 1,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if len(wizards) > 0 {
+		return int(odooID(wizards[0])), nil
+	}
+
+	// Create wizard
+	result, err := d.OdooClient.Call(
+		"ldap.sync.wizard", "create",
+		[]interface{}{map[string]interface{}{"ldap_id": ldapID}},
+		nil,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if id, ok := result.(float64); ok {
+		return int(id), nil
+	}
+	return 0, fmt.Errorf("wizard 생성 결과 파싱 실패")
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
