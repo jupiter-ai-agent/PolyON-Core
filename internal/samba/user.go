@@ -24,7 +24,7 @@ type UserInfo struct {
 func (s *Service) ListUsers() ([]UserInfo, error) {
 	entries, err := s.ldap.SearchSubtree(
 		s.BaseDN(),
-		"(&(objectClass=user)(!(objectClass=computer)))",
+		"(&(objectClass=user)(!(objectClass=computer))(!(isCriticalSystemObject=TRUE))(!(sAMAccountName=krbtgt))(!(sAMAccountName=Guest))(!(sAMAccountName=Administrator))(!(sAMAccountName=admin)))",
 		[]string{"sAMAccountName", "cn", "givenName", "sn", "mail",
 			"userAccountControl", "whenCreated", "memberOf", "distinguishedName"},
 	)
