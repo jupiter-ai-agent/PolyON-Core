@@ -389,6 +389,10 @@ func (c *Config) IsProvisioned() bool {
 	if fileExists(c.ResetInProgressPath()) {
 		return false
 	}
+	// K8s 환경: 환경변수로 provisioned 상태 전달
+	if os.Getenv("POLYON_PROVISIONED") == "true" {
+		return true
+	}
 	if fileExists(c.ProvisionedPath()) {
 		return true
 	}
