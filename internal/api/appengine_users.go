@@ -80,87 +80,81 @@ func toOdooGroup(m map[string]interface{}) odooGroupRecord {
 	return g
 }
 
-// adUserRecord represents an AD user merged with Odoo registration status.
-type adUserRecord struct {
-	Login    string      `json:"login"`
-	Name     string      `json:"name"`
-	Email    string      `json:"email"`
-	ID       int64       `json:"id,omitempty"`
-	Active   bool        `json:"active"`
-	GroupIDs interface{} `json:"group_ids,omitempty"`
+// syncedUserRecord represents an Odoo user imported via Sync Wizard policy.
+type syncedUserRecord struct {
+	ID           int64       `json:"id"`
+	Login        string      `json:"login"`
+	Name         string      `json:"name"`
+	Email        interface{} `json:"email"`
+	Active       bool        `json:"active"`
+	GroupIDs     interface{} `json:"group_ids,omitempty"`
+	LdapID       interface{} `json:"ldap_id"`
+	SyncMode     string      `json:"sync_mode"`     // group | enable | disable
+	IsSyncTarget bool        `json:"is_sync_target"` // Sync Wizard 판정 결과
 }
 
-// listAppEngineUsers returns all AD users (via LDAP) merged with Odoo registration info.
+// listAppEngineUsers returns Odoo users imported via Sync Wizard policy (ldap_id set).
+// Merges sync policy (sync_mode, is_sync_target) from ldap.sync.wizard.user.line.
 func listAppEngineUsers(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 1. AD LDAP에서 사용자 목록 조회
-		adUsers := make([]adUserRecord, 0)
-		if d.LDAP != nil {
-			baseDN := d.Cfg.BaseDN()
-			filter := "(&(objectClass=user)(!(isCriticalSystemObject=TRUE))(!(sAMAccountName=krbtgt))(!(sAMAccountName=Guest)))"
-			attrs := []string{"sAMAccountName", "displayName", "mail", "userPrincipalName"}
-			entries, err := d.LDAP.SearchSubtree(baseDN, filter, attrs)
-			if err == nil {
-				seen := make(map[string]bool)
-				for _, e := range entries {
-					login := e.Get("sAMAccountName")
-					if login == "" || seen[login] {
-						continue
-					}
-					seen[login] = true
-					email := e.Get("mail")
-					if email == "" {
-						email = e.Get("userPrincipalName")
-					}
-					adUsers = append(adUsers, adUserRecord{
-						Login: login,
-						Name:  e.Get("displayName"),
-						Email: email,
-					})
-				}
-			}
+		if d.OdooClient == nil {
+			httputil.RespondError(w, 503, "ODOO_UNAVAILABLE", "Odoo client not configured")
+			return
 		}
 
-		// 2. Odoo res.users에서 등록 상태 조회 후 매핑
-		if d.OdooClient != nil {
-			domain := []interface{}{[]interface{}{"share", "=", false}}
-			fields := []string{"id", "login", "active", "group_ids"}
-			records, err := d.OdooClient.SearchRead("res.users", domain, fields, 0, 0)
-			if err == nil {
-				odooMap := make(map[string]odooUserRecord)
-				for _, rec := range records {
-					u := toOdooUser(rec)
-					odooMap[u.Login] = u
-				}
-				for i, u := range adUsers {
-					if ou, ok := odooMap[u.Login]; ok {
-						adUsers[i].ID = ou.ID
-						adUsers[i].Active = ou.Active
-						adUsers[i].GroupIDs = ou.GroupIDs
-					}
-				}
-				// Odoo에만 있는 사용자 (OIDC로 가입, AD에 없는 경우) 추가
-				adLogins := make(map[string]bool)
-				for _, u := range adUsers {
-					adLogins[u.Login] = true
-				}
-				for _, ou := range odooMap {
-					if !adLogins[ou.Login] && ou.Login != "admin" {
-						adUsers = append(adUsers, adUserRecord{
-							Login:      ou.Login,
-							ID:     ou.ID,
-							Active: ou.Active,
-							GroupIDs:   ou.GroupIDs,
-						})
-					}
+		// 1. Sync Wizard 정책으로 import된 사용자만 조회 (ldap_id != False)
+		domain := []interface{}{
+			[]interface{}{"ldap_id", "!=", false},
+			[]interface{}{"share", "=", false},
+		}
+		fields := []string{"id", "name", "login", "email", "active", "group_ids", "ldap_id"}
+		records, err := d.OdooClient.SearchRead("res.users", domain, fields, 0, 0)
+		if err != nil {
+			httputil.RespondError(w, 500, "ODOO_ERROR", fmt.Sprintf("SearchRead users failed: %v", err))
+			return
+		}
+
+		users := make([]syncedUserRecord, 0, len(records))
+		loginIndex := make(map[string]int) // login → users 인덱스
+		for _, rec := range records {
+			u := toOdooUser(rec)
+			sr := syncedUserRecord{
+				ID:       u.ID,
+				Login:    u.Login,
+				Name:     u.Name,
+				Email:    u.Email,
+				Active:   u.Active,
+				GroupIDs: u.GroupIDs,
+				LdapID:   rec["ldap_id"],
+				SyncMode: "group", // 기본값
+			}
+			loginIndex[u.Login] = len(users)
+			users = append(users, sr)
+		}
+
+		// 2. Sync Wizard user lines에서 정책 정보 merge
+		wizardLines, err := d.OdooClient.SearchRead(
+			"ldap.sync.wizard.user.line",
+			[]interface{}{},
+			[]string{"screen_name", "sync_mode", "is_sync_target"},
+			0, 0,
+		)
+		if err == nil {
+			for _, line := range wizardLines {
+				screenName, _ := line["screen_name"].(string)
+				syncMode, _ := line["sync_mode"].(string)
+				isSyncTarget, _ := line["is_sync_target"].(bool)
+				if idx, ok := loginIndex[screenName]; ok {
+					users[idx].SyncMode = syncMode
+					users[idx].IsSyncTarget = isSyncTarget
 				}
 			}
 		}
 
 		httputil.RespondOK(w, map[string]interface{}{
 			"success": true,
-			"users":   adUsers,
-			"count":   len(adUsers),
+			"users":   users,
+			"count":   len(users),
 		})
 	}
 }
