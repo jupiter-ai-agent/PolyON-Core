@@ -19,7 +19,7 @@ func RegisterAppEngineCron(r chi.Router, d *Deps) {
 	})
 }
 
-// cronRecord maps ir.cron fields.
+// cronRecord maps ir.cron fields (Odoo 19).
 type cronRecord struct {
 	ID             int64       `json:"id"`
 	Name           string      `json:"name"`
@@ -27,12 +27,12 @@ type cronRecord struct {
 	IntervalNumber int         `json:"interval_number"`
 	IntervalType   string      `json:"interval_type"` // minutes/hours/days/weeks/months
 	NextCall       interface{} `json:"nextcall"`
-	NumberCall     int         `json:"numbercall"` // -1 = unlimited
-	ModelID        interface{} `json:"model_id"`
+	LastCall       interface{} `json:"lastcall"`
 	Priority       int         `json:"priority"`
+	FailureCount   int         `json:"failure_count"`
 }
 
-// toCronRecord converts a raw Odoo map to cronRecord.
+// toCronRecord converts a raw Odoo map to cronRecord (Odoo 19).
 func toCronRecord(m map[string]interface{}) cronRecord {
 	c := cronRecord{}
 	if v, ok := m["id"]; ok {
@@ -41,7 +41,10 @@ func toCronRecord(m map[string]interface{}) cronRecord {
 			c.ID = int64(x)
 		}
 	}
-	if v, ok := m["name"].(string); ok {
+	// Odoo 19: name은 ir_act_server의 name을 통해 오거나 cron_name 사용
+	if v, ok := m["cron_name"].(string); ok && v != "" {
+		c.Name = v
+	} else if v, ok := m["name"].(string); ok {
 		c.Name = v
 	}
 	if v, ok := m["active"].(bool); ok {
@@ -54,12 +57,12 @@ func toCronRecord(m map[string]interface{}) cronRecord {
 		c.IntervalType = v
 	}
 	c.NextCall = m["nextcall"]
-	if v, ok := m["numbercall"].(float64); ok {
-		c.NumberCall = int(v)
-	}
-	c.ModelID = m["model_id"]
+	c.LastCall = m["lastcall"]
 	if v, ok := m["priority"].(float64); ok {
 		c.Priority = int(v)
+	}
+	if v, ok := m["failure_count"].(float64); ok {
+		c.FailureCount = int(v)
 	}
 	return c
 }
@@ -72,7 +75,7 @@ func listAppEngineCron(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		fields := []string{"id", "name", "active", "interval_number", "interval_type", "nextcall", "numbercall", "model_id", "priority", "user_id"}
+		fields := []string{"id", "cron_name", "active", "interval_number", "interval_type", "nextcall", "lastcall", "priority", "failure_count"}
 		records, err := d.OdooClient.SearchRead("ir.cron", []interface{}{}, fields, 0, 0)
 		if err != nil {
 			httputil.RespondError(w, 500, "ODOO_ERROR", fmt.Sprintf("SearchRead ir.cron failed: %v", err))
