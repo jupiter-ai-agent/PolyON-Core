@@ -151,10 +151,19 @@ func listAppEngineUsers(d *Deps) http.HandlerFunc {
 			}
 		}
 
+		// 3. is_sync_target = false인 사용자는 표시하지 않음
+		// 이 페이지는 Sync Wizard 정책에 의해 실제 import된 계정만 관리
+		imported := make([]syncedUserRecord, 0, len(users))
+		for _, u := range users {
+			if u.IsSyncTarget {
+				imported = append(imported, u)
+			}
+		}
+
 		httputil.RespondOK(w, map[string]interface{}{
 			"success": true,
-			"users":   users,
-			"count":   len(users),
+			"users":   imported,
+			"count":   len(imported),
 		})
 	}
 }
