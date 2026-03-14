@@ -32,12 +32,12 @@ type odooUserRecord struct {
 	GroupIDs interface{} `json:"group_ids"`
 }
 
-// odooGroupRecord maps Odoo res.groups fields.
+// odooGroupRecord maps Odoo res.groups fields (Odoo 19).
 type odooGroupRecord struct {
-	ID         int64       `json:"id"`
-	Name       string      `json:"name"`
-	FullName   interface{} `json:"full_name"`
-	CategoryID interface{} `json:"category_id"`
+	ID          int64       `json:"id"`
+	Name        string      `json:"name"`
+	PrivilegeID interface{} `json:"privilege_id"`
+	Comment     interface{} `json:"comment"`
 }
 
 // toOdooUser converts a raw Odoo map to odooUserRecord.
@@ -63,7 +63,7 @@ func toOdooUser(m map[string]interface{}) odooUserRecord {
 	return u
 }
 
-// toOdooGroup converts a raw Odoo map to odooGroupRecord.
+// toOdooGroup converts a raw Odoo map to odooGroupRecord (Odoo 19).
 func toOdooGroup(m map[string]interface{}) odooGroupRecord {
 	g := odooGroupRecord{}
 	if v, ok := m["id"]; ok {
@@ -75,8 +75,8 @@ func toOdooGroup(m map[string]interface{}) odooGroupRecord {
 	if v, ok := m["name"].(string); ok {
 		g.Name = v
 	}
-	g.FullName = m["full_name"]
-	g.CategoryID = m["category_id"]
+	g.PrivilegeID = m["privilege_id"]
+	g.Comment = m["comment"]
 	return g
 }
 
@@ -212,7 +212,7 @@ func getAppEngineUser(d *Deps) http.HandlerFunc {
 		var groups []odooGroupRecord
 		if len(groupIDs) > 0 {
 			groupDomain := []interface{}{[]interface{}{"id", "in", groupIDs}}
-			groupFields := []string{"id", "name", "full_name", "category_id"}
+			groupFields := []string{"id", "name", "privilege_id", "comment"}
 			groupRecords, err := d.OdooClient.SearchRead("res.groups", groupDomain, groupFields, 0, 0)
 			if err != nil {
 				httputil.RespondError(w, 500, "ODOO_ERROR", fmt.Sprintf("SearchRead groups failed: %v", err))
@@ -280,7 +280,7 @@ func listAppEngineGroups(d *Deps) http.HandlerFunc {
 			return
 		}
 
-		fields := []string{"id", "name", "full_name", "category_id"}
+		fields := []string{"id", "name", "privilege_id", "comment"}
 		records, err := d.OdooClient.SearchRead("res.groups", []interface{}{}, fields, 0, 0)
 		if err != nil {
 			httputil.RespondError(w, 500, "ODOO_ERROR", fmt.Sprintf("SearchRead groups failed: %v", err))
