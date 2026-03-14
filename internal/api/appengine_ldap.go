@@ -32,7 +32,7 @@ var ldapConfigFields = []string{
 	"ldap_binddn",
 	"ldap_base", "ldap_filter",
 	"create_user",
-	// teps_odoo_ldap_connector extended fields
+	// polyon_ldap_connector extended fields
 	"users_dn", "auth_search_filter", "user_search_filter",
 	"ldap_attr_login", "ldap_attr_email",
 	"ldap_attr_firstname", "ldap_attr_middlename",
