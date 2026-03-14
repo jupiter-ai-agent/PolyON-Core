@@ -408,6 +408,9 @@ func (s *Server) buildRouter() {
 	r.Route("/api/internal/auth", func(r chi.Router) {
 		auth.RegisterForwardAuth(r, s.cfg)
 	})
+	r.Route("/api/internal/prc", func(r chi.Router) {
+		api.RegisterInternalPRC(r, deps)
+	})
 
 	r.Route("/api/alerts", func(r chi.Router) {
 		api.RegisterAlerts(r, deps)
