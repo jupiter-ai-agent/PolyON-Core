@@ -537,13 +537,13 @@ var wizardFields = []string{
 
 var wizardGroupFields = []string{
 	"id", "wizard_id", "selected", "sequence", "name", "description",
-	"member_count", "ldap_dn", "exists_in_odoo",
+	"member_count", "ldap_dn",
 }
 
 var wizardUserFields = []string{
 	"id", "wizard_id", "sync_mode", "is_sync_target", "screen_name",
 	"email", "first_name", "last_name", "job_title", "group_count",
-	"ldap_dn", "exists_in_odoo",
+	"ldap_dn",
 }
 
 // resolveWizardLDAPID extracts ldap_id from query param; falls back to first LDAP record.
