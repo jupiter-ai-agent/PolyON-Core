@@ -1,6 +1,9 @@
 package samba
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func (s *Service) DomainInfo() map[string]interface{} {
 	result := s.runTool("domain", "level", "show")
@@ -35,6 +38,59 @@ func (s *Service) DomainDCs() ([]map[string]string, error) {
 
 func (s *Service) FSMOShow() Result {
 	return s.runTool("fsmo", "show")
+}
+
+// FSMOParsed returns parsed FSMO roles as a structured map.
+func (s *Service) FSMOParsed() map[string]interface{} {
+	result := s.runTool("fsmo", "show")
+	if !result.Success {
+		return map[string]interface{}{"success": false, "error": result.Error}
+	}
+	roles := map[string]string{
+		"schema":         "",
+		"naming":         "",
+		"pdc":            "",
+		"rid":            "",
+		"infrastructure": "",
+	}
+	keywords := map[string]string{
+		"SchemaMasterRole":         "schema",
+		"DomainNamingMasterRole":   "naming",
+		"PdcEmulationMasterRole":   "pdc",
+		"RidAllocationMasterRole":  "rid",
+		"InfrastructureMasterRole": "infrastructure",
+	}
+	for _, line := range strings.Split(result.Output, "\n") {
+		for kw, key := range keywords {
+			if strings.Contains(line, kw) {
+				// Extract short DC name from CN=DC1,CN=Servers,...
+				owner := strings.TrimSpace(line)
+				if idx := strings.Index(owner, "CN="); idx >= 0 {
+					// Find second CN= for the server name
+					parts := strings.Split(owner, ",")
+					for _, p := range parts {
+						p = strings.TrimSpace(p)
+						if strings.HasPrefix(p, "CN=") && !strings.HasPrefix(p, "CN=NTDS") {
+							roles[key] = strings.TrimPrefix(p, "CN=")
+							break
+						}
+					}
+				}
+				if roles[key] == "" {
+					roles[key] = owner
+				}
+			}
+		}
+	}
+	return map[string]interface{}{
+		"success":        true,
+		"schema":         roles["schema"],
+		"naming":         roles["naming"],
+		"pdc":            roles["pdc"],
+		"rid":            roles["rid"],
+		"infrastructure": roles["infrastructure"],
+		"raw":            result.Output,
+	}
 }
 
 func (s *Service) ReplicationStatus() Result {

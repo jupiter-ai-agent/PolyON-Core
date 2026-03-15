@@ -21,7 +21,7 @@ func RegisterDomain(r chi.Router, d *Deps) {
 			httputil.RespondOK(w, map[string]interface{}{"success": true, "dcs": dcs})
 		})
 		r.Get("/fsmo", func(w http.ResponseWriter, _ *http.Request) {
-			httputil.RespondOK(w, d.Samba.FSMOShow())
+			httputil.RespondOK(w, d.Samba.FSMOParsed())
 		})
 		r.Get("/replication", func(w http.ResponseWriter, _ *http.Request) {
 			httputil.RespondOK(w, d.Samba.ReplicationStatus())
