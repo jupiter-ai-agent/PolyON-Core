@@ -214,7 +214,7 @@ func Load() (*Config, error) {
 			c.DBPassword = v
 		}
 	}
-	c.KCAdminUser = envMapOr(envMap, "KC_BOOTSTRAP_ADMIN_USERNAME", "keycloak")
+	c.KCAdminUser = envMapOr(envMap, "KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
 	c.KCAdminPassword = envFirst("POLYON_KC_ADMIN_PASSWORD", "KC_ADMIN_PASSWORD")
 	if c.KCAdminPassword == "" {
 		if v, ok := envMap["POLYON_KC_ADMIN_PASSWORD"]; ok {
