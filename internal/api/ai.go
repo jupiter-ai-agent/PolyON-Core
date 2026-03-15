@@ -471,25 +471,23 @@ func aiAgentStatus(w http.ResponseWriter, r *http.Request) {
 // ── Memory ──
 
 func aiMemoryStats(w http.ResponseWriter, r *http.Request) {
-	mem0URL := os.Getenv("MEM0_URL")
-	if mem0URL == "" {
-		mem0URL = "http://polyon-mem0:8080"
+	memURL := os.Getenv("MEMORY_URL")
+	if memURL == "" {
+		memURL = "http://polyon-memory.polyon.svc:8080"
 	}
 
 	stats := map[string]interface{}{
-		"status": "unknown",
-		"count":  0,
+		"status":   "unknown",
+		"count":    0,
+		"backend":  memURL,
+		"endpoint": memURL + "/memory/search",
 	}
 
-	resp, err := aiClient.Get(mem0URL + "/v1/memories/")
+	resp, err := aiClient.Get(memURL + "/health")
 	if err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == 200 {
 			stats["status"] = "healthy"
-			var memories []interface{}
-			if jsonErr := json.NewDecoder(resp.Body).Decode(&memories); jsonErr == nil {
-				stats["count"] = len(memories)
-			}
 		} else {
 			stats["status"] = "degraded"
 		}
