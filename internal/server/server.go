@@ -381,6 +381,7 @@ func (s *Server) buildRouter() {
 		api.RegisterAppEngineCron(r, deps)
 		api.RegisterAppEngineStorage(r, deps)
 		api.RegisterAuthMgmt(r, deps)
+		api.RegisterTraefik(r, deps)
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})

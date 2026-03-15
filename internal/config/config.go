@@ -61,6 +61,7 @@ type Config struct {
 
 	// Stalwart
 	StalwartURL          string `json:"-"`
+	TraefikAPIURL        string `json:"-"`
 	StalwartAdminUser     string `json:"-"`
 	StalwartAdminPassword string `json:"-"`
 
@@ -180,6 +181,10 @@ func Load() (*Config, error) {
 	c.StalwartURL = envFirst("POLYON_STALWART_URL", "STALWART_URL")
 	if c.StalwartURL == "" {
 		c.StalwartURL = "http://polyon-mail:8080"
+	}
+	c.TraefikAPIURL = envFirst("TRAEFIK_API_URL", "POLYON_TRAEFIK_API_URL")
+	if c.TraefikAPIURL == "" {
+		c.TraefikAPIURL = "http://traefik.kube-system.svc:8080"
 	}
 	c.ElasticURL = envFirst("POLYON_SEARCH_URL", "ELASTICSEARCH_URL")
 	if c.ElasticURL == "" {
