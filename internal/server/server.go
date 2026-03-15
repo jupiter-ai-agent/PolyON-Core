@@ -414,6 +414,9 @@ func (s *Server) buildRouter() {
 	r.Route("/api/internal/prc", func(r chi.Router) {
 		api.RegisterInternalPRC(r, deps)
 	})
+	r.Route("/api/internal/mail", func(r chi.Router) {
+		api.RegisterInternalMail(r, deps)
+	})
 
 	r.Route("/api/alerts", func(r chi.Router) {
 		api.RegisterAlerts(r, deps)

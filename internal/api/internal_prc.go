@@ -19,6 +19,13 @@ func RegisterInternalPRC(r chi.Router, d *Deps) {
 	r.Get("/status/{id}", internalPRCStatus(d))
 }
 
+// RegisterInternalMail registers internal (no-auth) mail endpoints.
+// Used by Operator to provision DNS records after Core is deployed.
+func RegisterInternalMail(r chi.Router, d *Deps) {
+	// POST /api/internal/mail/provision
+	r.Post("/provision", mailProvision(d))
+}
+
 // internalProvisionModule runs PRC for a module that is already deployed
 // but missing claim provisioning (e.g. installed via Wizard before PRC existed).
 func internalProvisionModule(d *Deps) http.HandlerFunc {
