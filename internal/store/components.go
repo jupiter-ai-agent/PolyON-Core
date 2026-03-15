@@ -139,7 +139,7 @@ var seedComponents = []Component{
 		HealthEndpoint: "/api/v1/version", HealthMethod: "GET", Icon: "code", Accent: "#609926",
 		DependsOn: j(`["postgresql"]`), Status: "active"},
 	// Capability
-	{ID: "polyon-ai", Name: "PolyON AI", Description: "AI Gateway (LiteLLM)", Category: "foundation", SortOrder: 13,
+	{ID: "polyon-ai", Name: "PolyON AI", Description: "AI Gateway (LiteLLM)", Category: "ai", SortOrder: 1,
 		ContainerName: "polyon-ai", Engine: "litellm", Host: "polyon-ai", Port: 4000,
 		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "watsonHealth3rdParty", Accent: "#8a3ffc",
 		DependsOn: j(`["postgresql","redis"]`), Status: "active"},
