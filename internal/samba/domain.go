@@ -3,6 +3,7 @@ package samba
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 func (s *Service) DomainInfo() map[string]interface{} {
@@ -94,7 +95,19 @@ func (s *Service) FSMOParsed() map[string]interface{} {
 }
 
 func (s *Service) ReplicationStatus() Result {
-	return s.runTool("drs", "showrepl")
+	// drs showrepl은 단일 DC 환경에서 복제 파트너 탐색 타임아웃(60s)이 길어
+	// 별도 goroutine + 5초 타임아웃으로 빠르게 처리
+	type res struct{ r Result }
+	ch := make(chan res, 1)
+	go func() {
+		ch <- res{s.runTool("drs", "showrepl")}
+	}()
+	select {
+	case r := <-ch:
+		return r.r
+	case <-time.After(5 * time.Second):
+		return Result{Success: false, Error: "단일 DC 환경 — 복제 파트너 없음 (타임아웃)"}
+	}
 }
 
 func (s *Service) ListComputers() ([]map[string]string, error) {
