@@ -129,6 +129,7 @@ func testPolicy(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			User   string   `json:"user"`
+			Roles  []string `json:"roles"`
 			Groups []string `json:"groups"`
 			Method string   `json:"method"`
 			Path   string   `json:"path"`

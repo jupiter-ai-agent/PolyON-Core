@@ -14,6 +14,7 @@ import (
 // OPAInput은 OPA에 보내는 질의 입력
 type OPAInput struct {
 	User   string   `json:"user"`
+	Roles  []string `json:"roles"`
 	Groups []string `json:"groups"`
 	Method string   `json:"method"`
 	Path   string   `json:"path"`
