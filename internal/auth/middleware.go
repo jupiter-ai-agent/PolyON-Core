@@ -71,14 +71,26 @@ func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
 				return
 			}
 
-			// JWT에서 roles 추출 (fail-safe: 오류 시 빈 배열)
-			roles := extractRolesFromToken(token)
+			// JWT에서 roles + azp 추출 (fail-safe: 오류 시 빈 배열)
+			rawRoles := extractRolesFromToken(token)
+
+			// __azp: prefix 분리
+			var roles []string
+			var clientID string
+			for _, r := range rawRoles {
+				if strings.HasPrefix(r, "__azp:") {
+					clientID = strings.TrimPrefix(r, "__azp:")
+				} else {
+					roles = append(roles, r)
+				}
+			}
 
 			// OPA RBAC 판정 (fail-open)
 			opaPath := strings.TrimPrefix(r.URL.Path, "/api/v1")
 			input := OPAInput{
 				User:   username,
 				Roles:  roles,
+				Client: clientID,
 				Method: r.Method,
 				Path:   opaPath,
 				IP:     r.RemoteAddr,
@@ -137,10 +149,16 @@ func extractRolesFromToken(tokenStr string) []string {
 		RealmAccess struct {
 			Roles []string `json:"roles"`
 		} `json:"realm_access"`
+		AZP string `json:"azp"`
 	}
 	if err := json.Unmarshal(decoded, &claims); err != nil {
 		return []string{}
 	}
 
-	return claims.RealmAccess.Roles
+	roles := claims.RealmAccess.Roles
+	// azp를 특수 역할로 포함 (OPA에서 client 식별에 사용)
+	if claims.AZP != "" {
+		roles = append(roles, "__azp:"+claims.AZP)
+	}
+	return roles
 }

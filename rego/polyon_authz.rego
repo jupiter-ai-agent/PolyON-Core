@@ -8,7 +8,15 @@ default role := "member"
 
 # ── 역할 결정 ──────────────────────────────────────────────────────────────────
 # input.roles: Keycloak JWT에서 전달된 역할 목록 (문자열 배열)
+# input.client: JWT azp 클레임 (polyon-console = Console 관리자)
 role := "superadmin" if "superadmin" in input.roles
+
+# polyon-console 클라이언트 토큰은 Console 관리자 → superadmin fallback
+role := "superadmin" if {
+	input.client == "polyon-console"
+	not "member" in input.roles
+	not "operator" in input.roles
+}
 
 role := "admin" if {
 	"admin" in input.roles

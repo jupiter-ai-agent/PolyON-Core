@@ -15,6 +15,7 @@ import (
 type OPAInput struct {
 	User   string   `json:"user"`
 	Roles  []string `json:"roles"`
+	Client string   `json:"client"`
 	Groups []string `json:"groups"`
 	Method string   `json:"method"`
 	Path   string   `json:"path"`
