@@ -374,6 +374,7 @@ func (s *Server) buildRouter() {
 		api.RegisterSettingsDomain(r, deps)
 		api.RegisterBackup(r, deps)
 		api.RegisterWorkstream(r, deps)
+		api.RegisterAgent(r, deps)
 		api.RegisterAppEngineUsers(r, deps)
 		api.RegisterAppEngineModules(r, deps)
 		api.RegisterAppEngineGroups(r, deps)

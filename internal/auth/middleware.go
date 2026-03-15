@@ -85,6 +85,30 @@ func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
 				}
 			}
 
+			// Agent on-behalf-of: X-Agent-User 헤더 처리
+			// agent_service role이 있으면 헤더를 신뢰하고 ActorKey를 사원 username으로 교체
+			agentUser := r.Header.Get("X-Agent-User")
+			if agentUser != "" {
+				hasAgentRole := false
+				for _, role := range roles {
+					if role == "agent_service" {
+						hasAgentRole = true
+						break
+					}
+				}
+				if !hasAgentRole {
+					// agent_service role 없이 X-Agent-User 전송 → 401
+					log.Warn().Str("user", username).Str("agent_user", agentUser).Msg("X-Agent-User rejected: missing agent_service role")
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(401)
+					w.Write([]byte(`{"status":"error","code":"AGENT_FORBIDDEN","error":"agent_service 권한이 없습니다"}`))
+					return
+				}
+				// agent_service role 확인 완료 → ActorKey를 사원 username으로 설정
+				log.Debug().Str("bot", username).Str("actor", agentUser).Msg("Agent on-behalf-of: actor overridden")
+				username = agentUser
+			}
+
 			// OPA RBAC 판정 (fail-open)
 			opaPath := strings.TrimPrefix(r.URL.Path, "/api/v1")
 			input := OPAInput{
