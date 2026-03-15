@@ -1,21 +1,37 @@
 package samba
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 func (s *Service) ListDNSZones() Result {
-	return s.runTool("dns", "zonelist", s.cfg.SambaHost, "-U", s.adminAuth())
+	return cachedResult("dns:zones", 60*time.Second, func() Result {
+		return s.runTool("dns", "zonelist", s.cfg.SambaHost, "-U", s.adminAuth())
+	})
 }
 
 func (s *Service) ListDNSRecords(zone string) Result {
-	return s.runTool("dns", "query", s.cfg.SambaHost, zone, "@", "ALL", "-U", s.adminAuth())
+	return cachedResult("dns:records:"+zone, 30*time.Second, func() Result {
+		return s.runTool("dns", "query", s.cfg.SambaHost, zone, "@", "ALL", "-U", s.adminAuth())
+	})
 }
 
 func (s *Service) AddDNSRecord(zone, name, rtype, data string) Result {
-	return s.runTool("dns", "add", s.cfg.SambaHost, zone, name, rtype, data, "-U", s.adminAuth())
+	r := s.runTool("dns", "add", s.cfg.SambaHost, zone, name, rtype, data, "-U", s.adminAuth())
+	if r.Success {
+		// 캐시 무효화
+		globalCache.invalidate("dns:records:" + zone)
+	}
+	return r
 }
 
 func (s *Service) DeleteDNSRecord(zone, name, rtype, data string) Result {
-	return s.runTool("dns", "delete", s.cfg.SambaHost, zone, name, rtype, data, "-U", s.adminAuth())
+	r := s.runTool("dns", "delete", s.cfg.SambaHost, zone, name, rtype, data, "-U", s.adminAuth())
+	if r.Success {
+		globalCache.invalidate("dns:records:" + zone)
+	}
+	return r
 }
 
 func (s *Service) GetDomainLevel() Result {

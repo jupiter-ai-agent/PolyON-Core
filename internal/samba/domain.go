@@ -41,57 +41,60 @@ func (s *Service) FSMOShow() Result {
 	return s.runTool("fsmo", "show")
 }
 
-// FSMOParsed returns parsed FSMO roles as a structured map.
+// FSMOParsed returns FSMO roles via direct LDAP attribute lookup (fSMORoleOwner).
+// LDAP 직접 조회 → samba-tool 프로세스 없이 수 ms 수준.
 func (s *Service) FSMOParsed() map[string]interface{} {
-	result := s.runTool("fsmo", "show")
-	if !result.Success {
-		return map[string]interface{}{"success": false, "error": result.Error}
-	}
-	roles := map[string]string{
-		"schema":         "",
-		"naming":         "",
-		"pdc":            "",
-		"rid":            "",
-		"infrastructure": "",
-	}
-	keywords := map[string]string{
-		"SchemaMasterRole":         "schema",
-		"DomainNamingMasterRole":   "naming",
-		"PdcEmulationMasterRole":   "pdc",
-		"RidAllocationMasterRole":  "rid",
-		"InfrastructureMasterRole": "infrastructure",
-	}
-	for _, line := range strings.Split(result.Output, "\n") {
-		for kw, key := range keywords {
-			if strings.Contains(line, kw) {
-				// Extract short DC name from CN=DC1,CN=Servers,...
-				owner := strings.TrimSpace(line)
-				if idx := strings.Index(owner, "CN="); idx >= 0 {
-					// Find second CN= for the server name
-					parts := strings.Split(owner, ",")
-					for _, p := range parts {
-						p = strings.TrimSpace(p)
-						if strings.HasPrefix(p, "CN=") && !strings.HasPrefix(p, "CN=NTDS") {
-							roles[key] = strings.TrimPrefix(p, "CN=")
-							break
-						}
-					}
-				}
-				if roles[key] == "" {
-					roles[key] = owner
-				}
+	return cachedMap("fsmo", 60*time.Second, func() map[string]interface{} {
+		baseDN := s.BaseDN()
+		confDN := "CN=Configuration," + baseDN
+
+		// (DN, role key) 매핑
+		targets := []struct {
+			dn  string
+			key string
+		}{
+			{baseDN, "pdc"},
+			{"CN=Infrastructure," + baseDN, "infrastructure"},
+			{"CN=RID Manager$,CN=System," + baseDN, "rid"},
+			{"CN=Partitions," + confDN, "naming"},
+			{"CN=Schema," + confDN, "schema"},
+		}
+
+		roles := map[string]string{}
+		for _, t := range targets {
+			entries, err := s.ldap.Search(t.dn, "(objectClass=*)", []string{"fSMORoleOwner"}, 0 /* base */)
+			if err != nil || len(entries) == 0 {
+				roles[t.key] = "—"
+				continue
 			}
+			owner := entries[0].Get("fSMORoleOwner")
+			// CN=NTDS Settings,CN=DC1,... → DC1
+			dcName := extractDCName(owner)
+			roles[t.key] = dcName
+		}
+
+		return map[string]interface{}{
+			"success":        true,
+			"schema":         roles["schema"],
+			"naming":         roles["naming"],
+			"pdc":            roles["pdc"],
+			"rid":            roles["rid"],
+			"infrastructure": roles["infrastructure"],
+		}
+	})
+}
+
+// extractDCName extracts the server name from an NTDS Settings DN.
+// e.g. "CN=NTDS Settings,CN=DC1,CN=Servers,..." → "DC1"
+func extractDCName(dn string) string {
+	parts := strings.Split(dn, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if strings.HasPrefix(p, "CN=") && !strings.HasPrefix(p, "CN=NTDS") {
+			return strings.TrimPrefix(p, "CN=")
 		}
 	}
-	return map[string]interface{}{
-		"success":        true,
-		"schema":         roles["schema"],
-		"naming":         roles["naming"],
-		"pdc":            roles["pdc"],
-		"rid":            roles["rid"],
-		"infrastructure": roles["infrastructure"],
-		"raw":            result.Output,
-	}
+	return dn
 }
 
 func (s *Service) ReplicationStatus() Result {
