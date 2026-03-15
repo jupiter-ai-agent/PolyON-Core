@@ -380,6 +380,7 @@ func (s *Server) buildRouter() {
 		api.RegisterAppEngineLDAP(r, deps)
 		api.RegisterAppEngineCron(r, deps)
 		api.RegisterAppEngineStorage(r, deps)
+		api.RegisterAuthMgmt(r, deps)
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})
