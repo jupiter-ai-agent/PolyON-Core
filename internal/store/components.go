@@ -48,7 +48,7 @@ var seedComponents = []Component{
 		ContainerName: "polyon-office", Engine: "onlyoffice", Host: "polyon-office", Port: 80,
 		HealthEndpoint: "/healthcheck", HealthMethod: "GET", Icon: "document", Accent: "#FF6F3D",
 		DependsOn: j(`["postgresql"]`), Status: "planned"},
-	{ID: "affine", Name: "PolyON Wiki", Description: "지식 관리 (AFFiNE)", Category: "engine", SortOrder: 5,
+	{ID: "affine", Name: "PolyON Canvas", Description: "지식 관리 (AFFiNE)", Category: "engine", SortOrder: 5,
 		ContainerName: "polyon-wiki", Engine: "affine", Host: "polyon-wiki", Port: 3010,
 		HealthEndpoint: "/info", HealthMethod: "GET", Icon: "notebook", Accent: "#1E96EB",
 		DependsOn: j(`["postgresql","redis"]`), Status: "planned"},
