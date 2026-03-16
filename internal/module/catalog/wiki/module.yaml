@@ -2,7 +2,7 @@ apiVersion: polyon.io/v1
 kind: Module
 metadata:
   id: affine
-  name: PolyON Wiki
+  name: PolyON Canvas
   version: 1.0.0
   category: engine
   icon: Notebook
