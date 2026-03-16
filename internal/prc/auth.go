@@ -220,13 +220,16 @@ func (p *AuthProvider) createClient(ctx context.Context, token, clientID, access
 	}
 
 	// PKCE: public → S256 강제, confidential → 해제
+	// post.logout.redirect.uris: 로그아웃 후 리다이렉트 URI 등록
 	if accessType == "public" {
 		clientBody["attributes"] = map[string]string{
 			"pkce.code.challenge.method": "S256",
+			"post.logout.redirect.uris": strings.Join(redirectUris, " "),
 		}
 	} else {
 		clientBody["attributes"] = map[string]string{
 			"pkce.code.challenge.method": "", // 해제 — 서버가 client_secret으로 인증
+			"post.logout.redirect.uris": strings.Join(redirectUris, " "),
 		}
 	}
 

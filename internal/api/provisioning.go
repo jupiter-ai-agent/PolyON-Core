@@ -90,7 +90,7 @@ func getDirectoryInfo(d *Deps) DirectoryConnectInfo {
 	}
 }
 
-// provisionMattermostLDAP configures Mattermost LDAP settings using the AD DC.
+// provisionMattermostLDAP configures Mattermost LDAP + Keycloak SSO settings using the AD DC.
 func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec module.Spec, dir DirectoryConnectInfo) error {
 	mmURL := mattermostURL(d)
 	token := mattermostToken(d)
@@ -103,38 +103,77 @@ func provisionMattermostLDAP(ctx context.Context, d *Deps, moduleID string, spec
 	if err != nil {
 		return fmt.Errorf("get config: %w", err)
 	}
-
-	// 2. OIDC 설정 — Keycloak OpenID Connect
-	oidcSettings := map[string]interface{}{
-		"Enable":            true,
-		"Id":                "mattermost",
-		"Secret":            "mattermost-oidc-secret-2026",
-		"DiscoveryEndpoint": d.Cfg.KeycloakURL + "/realms/polyon/.well-known/openid-configuration",
-		"ButtonText":        "PolyON SSO 로그인",
-		"ButtonColor":       "#FF7F11",
-		"Scope":             "profile openid email",
-	}
-
-	// LDAP 비활성화
-	ldapSettings := map[string]interface{}{
-		"Enable": false,
-	}
-
-	// 3. config에 머지
 	configMap, ok := currentConfig.(map[string]interface{})
 	if !ok {
 		return fmt.Errorf("unexpected config format")
 	}
-	configMap["OpenIdSettings"] = oidcSettings
-	configMap["LdapSettings"] = ldapSettings
 
-	// 4. PUT config
+	// 2. LDAP 설정 — module.yaml의 ldap.settings 활용
+	ldapSettings := map[string]interface{}{
+		"Enable":                      true,
+		"EnableSync":                  true,
+		"LdapServer":                  dir.Host, // polyon-dc
+		"LdapPort":                    389,
+		"ConnectionSecurity":          "",
+		"SkipCertificateVerification": true,
+		"BaseDN":                      dir.BaseDN, // DC=cmars,DC=com
+		"BindUsername":                d.Cfg.AdminDN(),
+		"BindPassword":                d.Cfg.DCAdminPassword,
+		"UserFilter":                  spec.LDAP.Settings["UserFilter"],
+		"UsernameAttribute":           spec.LDAP.Settings["UsernameAttribute"],
+		"IdAttribute":                 spec.LDAP.Settings["IdAttribute"],
+		"LoginIdAttribute":            spec.LDAP.Settings["LoginIdAttribute"],
+		"FirstNameAttribute":          spec.LDAP.Settings["FirstNameAttribute"],
+		"LastNameAttribute":           spec.LDAP.Settings["LastNameAttribute"],
+		"EmailAttribute":              "userPrincipalName",
+		"NicknameAttribute":           spec.LDAP.Settings["NicknameAttribute"],
+		"PositionAttribute":           spec.LDAP.Settings["PositionAttribute"],
+		"LoginFieldName":              spec.LDAP.Settings["LoginFieldName"],
+		"MaximumLoginAttempts":        10,
+		"QueryTimeout":                60,
+		"SyncIntervalMinutes":         60,
+	}
+
+	// 3. GitLabSettings — Keycloak OIDC (PolyON 커스텀 빌드 방식)
+	// polyon realm의 mattermost 클라이언트 secret은 K8s Secret에서 조회
+	kcBaseURL := d.Cfg.KeycloakURL // e.g. https://sso.cmars.com
+	oidcSecret := ""
+	if d.Kube != nil {
+		if s, err := d.Kube.GetSecret(ctx, "polyon-module-mattermost"); err == nil {
+			oidcSecret = s["OIDC_CLIENT_SECRET"]
+		}
+	}
+	// TODO: Keycloak API에서 직접 조회하는 방식으로 개선 가능
+	gitlabSettings := map[string]interface{}{
+		"Enable":          true,
+		"Id":              "mattermost",
+		"Secret":          oidcSecret,
+		"Scope":           "openid profile email",
+		"AuthEndpoint":    kcBaseURL + "/realms/polyon/protocol/openid-connect/auth",
+		"TokenEndpoint":   "http://polyon-auth:8080/realms/polyon/protocol/openid-connect/token",
+		"UserAPIEndpoint": "http://polyon-auth:8080/realms/polyon/protocol/openid-connect/userinfo",
+		"ButtonText":      "PolyON SSO (AD 계정)",
+		"ButtonColor":     "#0058CC",
+	}
+
+	// 4. 이메일 로그인 비활성화 (SSO 전용)
+	emailSettings, _ := configMap["EmailSettings"].(map[string]interface{})
+	if emailSettings == nil {
+		emailSettings = map[string]interface{}{}
+	}
+	emailSettings["EnableSignInWithEmail"] = false
+	emailSettings["EnableSignInWithUsername"] = false
+
+	// 5. config 머지 후 PUT
+	configMap["LdapSettings"] = ldapSettings
+	configMap["GitLabSettings"] = gitlabSettings
+	configMap["EmailSettings"] = emailSettings
+
 	if err := mmAPIPut(mmURL, token, "/api/v4/config", configMap); err != nil {
 		return fmt.Errorf("put config: %w", err)
 	}
 
-	log.Info().Msg("Mattermost OIDC configured — users auto-provisioned on first login")
-
+	log.Info().Str("module_id", moduleID).Msg("Mattermost LDAP + Keycloak SSO provisioning completed")
 	return nil
 }
 
