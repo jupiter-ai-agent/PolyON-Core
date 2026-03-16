@@ -39,7 +39,7 @@ var seedComponents = []Component{
 	{ID: "mattermost", Name: "PolyON Chat", Description: "팀 메신저 (Mattermost)", Category: "engine", SortOrder: 1,
 		ContainerName: "polyon-mattermost", Engine: "mattermost", Host: "polyon-mattermost", Port: 8065,
 		HealthEndpoint: "/api/v4/system/ping", HealthMethod: "GET", Icon: "chat", Accent: "#0058CC",
-		DependsOn: j(`["postgresql","polyon-auth"]`), Status: "available"},
+		DependsOn: j(`["postgresql","polyon-auth"]`), Status: "planned"},
 	{ID: "drive", Name: "PP Drive", Description: "파일 스토리지 (WebDAV, 공유, 버전)", Category: "engine", SortOrder: 3,
 		ContainerName: "polyon-drive", Engine: "drive", Host: "polyon-drive", Port: 8080,
 		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "folder", Accent: "#0082C9",
