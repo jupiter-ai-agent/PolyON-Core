@@ -52,11 +52,6 @@ var seedComponents = []Component{
 		ContainerName: "polyon-wiki", Engine: "affine", Host: "polyon-wiki", Port: 3010,
 		HealthEndpoint: "/info", HealthMethod: "GET", Icon: "notebook", Accent: "#1E96EB",
 		DependsOn: j(`["postgresql","redis"]`), Status: "planned"},
-	{ID: "odoo", Name: "PolyON ERP", Description: "전사 자원관리 (Odoo)", Category: "engine", SortOrder: 6,
-		ContainerName: "polyon-appengine", Engine: "odoo", Host: "polyon-appengine", Port: 8069,
-		HealthEndpoint: "/web/health", HealthMethod: "GET", Icon: "dataBase", Accent: "#714B67",
-		DependsOn: j(`["postgresql"]`), Status: "planned"},
-	// NOTE: Gitea → foundation 카테고리로 이동 (Foundation #7)
 	{ID: "runner", Name: "PolyON CI/CD", Description: "CI/CD 실행기 (Gitea Actions Runner)", Category: "engine", SortOrder: 7,
 		ContainerName: "polyon-runner", Engine: "gitea-actions", Host: "polyon-runner", Port: 0,
 		HealthEndpoint: "", HealthMethod: "", Icon: "build", Accent: "#609926",
