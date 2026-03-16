@@ -83,6 +83,13 @@ func RegisterAI(r chi.Router, d *Deps) {
 		// Settings / overview
 		r.Get("/settings", aiGetSettings)
 
+		// Health (per-model status)
+		r.Get("/health", aiModelHealth)
+
+		// Spend by model/key
+		r.Get("/spend/models", aiSpendByModel)
+		r.Get("/spend/keys", aiSpendByKey)
+
 		// Agent status (OpenClaw gateway proxy)
 		r.Get("/agents", aiListAgents)
 		r.Get("/agents/{agentID}/status", aiAgentStatus)
@@ -496,4 +503,22 @@ func aiMemoryStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.RespondOK(w, stats)
+}
+
+// aiModelHealth returns per-model health status from LiteLLM /health endpoint.
+func aiModelHealth(w http.ResponseWriter, r *http.Request) {
+	resp, err := proxyGet("/health")
+	if err != nil {
+		httputil.RespondError(w, 502, "gateway_error", "litellm unreachable: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+
+	var data map[string]interface{}
+	if json.Unmarshal(raw, &data) != nil {
+		httputil.RespondError(w, 502, "parse_error", "failed to parse health response")
+		return
+	}
+	httputil.RespondOK(w, data)
 }
