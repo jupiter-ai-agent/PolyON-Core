@@ -6,7 +6,7 @@ kind: Module
 metadata:
   id: mattermost                    # 고유 식별자 (영문 소문자, 하이픈)
   name: PolyON Chat                 # 표시명
-  version: 2.0.3                   # 시맨틱 버전
+  version: 1.0.0                   # 시맨틱 버전
   category: engine                  # engine | ai | process | monitoring
   icon: Chat                        # @carbon/icons-react 컴포넌트명
   accent: "#0058CC"                 # 테마 색상
@@ -32,7 +32,7 @@ spec:
   resources:
     statefulset: false              # true면 StatefulSet, false면 Deployment (기본: false)
 
-    image: jupitertriangles/polyon-chat:v2.0.3
+    image: jupitertriangles/polyon-chat:v1.0.0
     replicas: 1
     command: ["bin/mattermost", "server"]
     
