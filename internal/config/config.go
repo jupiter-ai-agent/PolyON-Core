@@ -125,6 +125,12 @@ type Config struct {
 	// OpenClaw (AI Agent Runtime)
 	OpenClawURL string `json:"-"`
 
+	// PolyON Embed (vector embedding service)
+	EmbedURL string `json:"-"`
+
+	// PolyON Search (OpenSearch)
+	SearchURL string `json:"-"`
+
 	// Docker
 	DCContainer string `json:"dc_container"`
 }
@@ -207,6 +213,8 @@ func Load() (*Config, error) {
 	c.MattermostURL = envOr("MATTERMOST_URL", "http://polyon-mattermost:8065")
 	c.Mem0URL = envOr("MEM0_URL", "http://polyon-mem0:8888")
 	c.OpenClawURL = envOr("OPENCLAW_URL", "http://polyon-agent:18789")
+	c.EmbedURL = envOr("EMBED_URL", "http://polyon-embed:4001")
+	c.SearchURL = envOr("SEARCH_URL", "http://polyon-search:9200")
 
 	// Read .env file
 	envMap := readEnvFile(filepath.Join(c.PolyonDir, ".env"))

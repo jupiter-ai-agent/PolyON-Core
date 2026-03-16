@@ -383,6 +383,7 @@ func (s *Server) buildRouter() {
 		api.RegisterAppEngineStorage(r, deps)
 		api.RegisterAuthMgmt(r, deps)
 		api.RegisterTraefik(r, deps)
+		api.RegisterSearch(r, deps)
 		r.Route("/alert-rules", func(r chi.Router) {
 			api.RegisterAlertRules(r, deps)
 		})
@@ -478,6 +479,9 @@ func (s *Server) Start() error {
 			api.InitFirewall(s.deps)
 		}()
 	}
+
+	// Initialize kNN indices for Foundation modules (mail, drive, chat)
+	go api.InitFoundationIndices(s.cfg.SearchURL)
 
 	// Start K8s image version syncer (no-op when not running in-cluster)
 	if s.store != nil && s.kube != nil {
