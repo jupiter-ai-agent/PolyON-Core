@@ -138,8 +138,13 @@ var seedComponents = []Component{
 		ContainerName: "polyon-gitea", Engine: "gitea", Host: "polyon-gitea", Port: 3000,
 		HealthEndpoint: "/api/v1/version", HealthMethod: "GET", Icon: "code", Accent: "#609926",
 		DependsOn: j(`["postgresql"]`), Status: "active"},
-	// Capability
-	{ID: "polyon-ai", Name: "PolyON AI", Description: "AI Gateway (LiteLLM)", Category: "ai", SortOrder: 1,
+	// Capability — polyon-embed: Foundation 확장 (Search Stack)
+	{ID: "polyon-embed", Name: "PolyON Embed", Description: "Embedding Service (multilingual-e5-base)", Category: "foundation", SortOrder: 13,
+		ContainerName: "polyon-embed", Engine: "fastapi", Host: "polyon-embed", Port: 4001,
+		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "VectorMath", Accent: "#6929C4",
+		DependsOn: j(`["opensearch","postgresql"]`), Status: "planned"},
+	// AI 섹션
+	{ID: "polyon-ai", Name: "AI Gateway", Description: "AI Gateway (LiteLLM)", Category: "ai", SortOrder: 1,
 		ContainerName: "polyon-ai", Engine: "litellm", Host: "polyon-ai", Port: 4000,
 		HealthEndpoint: "/health", HealthMethod: "GET", Icon: "watsonHealth3rdParty", Accent: "#8a3ffc",
 		DependsOn: j(`["postgresql","redis"]`), Status: "active"},
