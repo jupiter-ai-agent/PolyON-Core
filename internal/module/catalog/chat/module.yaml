@@ -92,7 +92,7 @@ spec:
       LoginIdAttribute: sAMAccountName
       FirstNameAttribute: givenName
       LastNameAttribute: sn
-      EmailAttribute: mail
+      EmailAttribute: userPrincipalName
       NicknameAttribute: displayName
       PositionAttribute: title
       LoginFieldName: "AD 계정"
