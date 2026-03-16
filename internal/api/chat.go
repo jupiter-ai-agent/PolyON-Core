@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,7 +234,8 @@ func RegisterChat(r chi.Router, d *Deps) {
 		// Stats
 		r.Get("/stats", chatGetStats(d))
 
-		// LDAP sync removed — OIDC JIT provisioning
+		// LDAP sync — Core가 AD에서 사용자를 가져와 Mattermost에 프로비저닝
+		r.Post("/ldap-sync", chatLDAPSync(d))
 
 		// System info
 		r.Get("/ping", chatPing(d))
@@ -403,5 +405,100 @@ func chatGetStats(d *Deps) http.HandlerFunc {
 func chatPing(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		chatProxy(d, "GET", "/api/v4/system/ping", nil, w, r)
+	}
+}
+
+// ── LDAP Sync ──
+
+// chatLDAPSync syncs AD users into Mattermost.
+// Mattermost Team Edition에는 LDAP sync API가 없으므로
+// Core가 Samba AD LDAP에서 사용자를 가져와 Mattermost에 직접 생성합니다.
+func chatLDAPSync(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if d.Samba == nil {
+			httputil.RespondError(w, 503, "LDAP_UNAVAILABLE", "Samba/LDAP not configured")
+			return
+		}
+
+		mmURL := mattermostURL(d)
+		token := mattermostToken(d)
+		if token == "" {
+			httputil.RespondError(w, 503, "MM_TOKEN_MISSING", "Mattermost token not available")
+			return
+		}
+
+		// 1. AD 사용자 목록 조회
+		adUsers, err := d.Samba.ListUsers()
+		if err != nil {
+			httputil.RespondError(w, 500, "LDAP_ERROR", "AD user list failed: "+err.Error())
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		realm := strings.ToLower(d.Samba.Realm())
+		synced, skipped, failed := 0, 0, 0
+
+		for _, u := range adUsers {
+			un := u.Username
+			if un == "" || strings.EqualFold(un, "krbtgt") || strings.EqualFold(un, "guest") {
+				skipped++
+				continue
+			}
+
+			email := u.Mail
+			if email == "" {
+				email = strings.ToLower(un) + "@" + realm
+			}
+			firstName := u.GivenName
+			if firstName == "" {
+				firstName = un
+			}
+
+			// 이미 존재하는 사용자 skip
+			checkReq, _ := http.NewRequest("GET", mmURL+"/api/v4/users/username/"+strings.ToLower(un), nil)
+			checkReq.Header.Set("Authorization", "Bearer "+token)
+			checkResp, err := client.Do(checkReq)
+			if err == nil && checkResp.StatusCode == 200 {
+				checkResp.Body.Close()
+				skipped++
+				continue
+			}
+			if checkResp != nil {
+				checkResp.Body.Close()
+			}
+
+			// Mattermost 사용자 생성 (GitLab OIDC auth_service 연동)
+			payload := map[string]interface{}{
+				"email":        email,
+				"username":     strings.ToLower(un),
+				"first_name":   firstName,
+				"last_name":    u.Surname,
+				"auth_service": "gitlab",
+				"auth_data":    email,
+			}
+			body, _ := json.Marshal(payload)
+			createReq, _ := http.NewRequest("POST", mmURL+"/api/v4/users", bytes.NewReader(body))
+			createReq.Header.Set("Authorization", "Bearer "+token)
+			createReq.Header.Set("Content-Type", "application/json")
+			createResp, err := client.Do(createReq)
+			if err != nil {
+				failed++
+				continue
+			}
+			createResp.Body.Close()
+			if createResp.StatusCode == 201 || createResp.StatusCode == 200 {
+				synced++
+			} else {
+				failed++
+			}
+		}
+
+		httputil.RespondOK(w, map[string]interface{}{
+			"success": true,
+			"synced":  synced,
+			"skipped": skipped,
+			"failed":  failed,
+			"total":   len(adUsers),
+		})
 	}
 }
