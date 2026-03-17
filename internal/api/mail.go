@@ -101,17 +101,73 @@ func createS3Bucket(endpoint, accessKey, secretKey, bucket string) (status, deta
 	}
 }
 
-// ── Stalwart CLI via Docker exec ──────────────────────────────────────────────
+// ── Stalwart HTTP API helpers ─────────────────────────────────────────────────
 
-func runStalwartCLI(d *Deps, args ...string) error {
-	stalwartPW := d.Cfg.StalwartAdminPassword
-	cmdArgs := append([]string{
-		"stalwart-cli",
-		"-u", "https://localhost:443",
-		"-c", "admin:" + stalwartPW,
-	}, args...)
-	_, err := d.Docker.ExecCommand("polyon-mail", cmdArgs...)
-	return err
+// stalwartSetting은 POST /api/settings 에 사용하는 UpdateSettings 형식
+type stalwartSetting struct {
+	Type        string          `json:"type"`
+	Prefix      *string         `json:"prefix,omitempty"`
+	Values      [][2]string     `json:"values,omitempty"`
+	AssertEmpty bool            `json:"assert_empty"`
+	Keys        []string        `json:"keys,omitempty"`
+}
+
+// stalwartConfigSet은 Stalwart 설정 키 하나를 HTTP API로 저장한다.
+// POST /api/settings with [{"type":"insert","prefix":null,"values":[[key,value]],"assert_empty":false}]
+func stalwartConfigSet(d *Deps, key, value string) error {
+	payload := []stalwartSetting{
+		{
+			Type:        "insert",
+			Prefix:      nil,
+			Values:      [][2]string{{key, value}},
+			AssertEmpty: false,
+		},
+	}
+	resp, err := stalwartDo(d, "POST", "/api/settings", payload)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("stalwart settings set failed: HTTP %d %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// stalwartConfigDelete는 지정된 prefix로 시작하는 모든 설정 키를 삭제한다.
+// POST /api/settings with [{"type":"clear","prefix":"prefix"}]
+func stalwartConfigDelete(d *Deps, prefix string) error {
+	payload := []stalwartSetting{
+		{
+			Type:   "clear",
+			Prefix: &prefix,
+		},
+	}
+	resp, err := stalwartDo(d, "POST", "/api/settings", payload)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("stalwart settings clear failed: HTTP %d %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// stalwartReload는 GET /api/reload 를 호출해 설정을 즉시 적용한다.
+func stalwartReload(d *Deps) error {
+	resp, err := stalwartDo(d, "GET", "/api/reload", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("stalwart reload failed: HTTP %d %s", resp.StatusCode, string(b))
+	}
+	return nil
 }
 
 // ── Setup JSON helpers ────────────────────────────────────────────────────────
@@ -165,7 +221,7 @@ func configureStorage(d *Deps, realm string) []map[string]interface{} {
 	baseDN := strings.Join(dcs, ",")
 
 	// Step 3: Delete old storage config and set new
-	runStalwartCLI(d, "server", "delete-config", "storage")
+	stalwartConfigDelete(d, "storage.")
 
 	settings := [][2]string{
 		{"storage.data", "rocksdb"}, {"storage.blob", "s3"},
@@ -208,9 +264,7 @@ func configureStorage(d *Deps, realm string) []map[string]interface{} {
 
 	var failed []string
 	for _, kv := range settings {
-		// Use "--" separator before value to prevent CLI from interpreting
-		// values starting with "-" as flags (e.g. passwords like "-ODN-...")
-		if err := runStalwartCLI(d, "server", "add-config", kv[0], "--", kv[1]); err != nil {
+		if err := stalwartConfigSet(d, kv[0], kv[1]); err != nil {
 			failed = append(failed, kv[0])
 		}
 	}
@@ -231,7 +285,7 @@ func configureStorage(d *Deps, realm string) []map[string]interface{} {
 	}
 
 	// Step 4: Reload
-	if err := runStalwartCLI(d, "server", "reload-config"); err != nil {
+	if err := stalwartReload(d); err != nil {
 		steps = append(steps, map[string]interface{}{
 			"name": "stalwart_reload", "status": "error",
 			"detail": "Reload 오류: " + err.Error(),
