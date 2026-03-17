@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	stdlog "log"
 	"net/http"
 	"os"
@@ -436,6 +437,36 @@ func (s *Server) buildRouter() {
 	})
 	r.Route("/es-proxy", func(r chi.Router) {
 		proxy.RegisterElasticsearch(r, s.cfg)
+	})
+
+	// JMAP proxy — Bearer JWT 투명 전달 (Stalwart가 Keycloak으로 검증)
+	// /jmap-proxy/* → Stalwart JMAP 엔드포인트로 프록시
+	r.Route("/jmap-proxy", func(r chi.Router) {
+		proxy.RegisterJMAP(r, s.cfg)
+	})
+
+	// JMAP Session 진입점 — /.well-known/jmap
+	// RFC 8620: JMAP clients use this to discover the JMAP Session object
+	r.Get("/.well-known/jmap", func(w http.ResponseWriter, r *http.Request) {
+		targetURL := s.cfg.StalwartURL + "/.well-known/jmap"
+		proxyReq, err := http.NewRequest(http.MethodGet, targetURL, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			proxyReq.Header.Set("Authorization", auth)
+		}
+		client := &http.Client{}
+		resp, err := client.Do(proxyReq)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body) //nolint:errcheck
 	})
 
 	s.router = r
